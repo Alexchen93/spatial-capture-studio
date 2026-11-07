@@ -1,0 +1,5 @@
+# Nested checkout metadata is local history, not project source
+.sites-checkout/.git/
+# Python bytecode caches
+**/__pycache__/
+*.py[cod]

@@ -1,0 +1,10 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {moveWithCollisions,OBSTACLES} from '../dist/modules/movement.mjs';
+const near=(a,b,tol=1e-4)=>assert.ok(Math.abs(a-b)<tol,`${a} != ${b}`);
+test('front wall stops high-speed movement before capsule crosses',()=>{let p=moveWithCollisions({x:0,z:5},{x:0,z:20});near(p.z,8.6);assert.equal(p.hit,'牆面')});
+test('front obstacle blocks forward motion',()=>{let p=moveWithCollisions({x:0,z:3},{x:0,z:-5});near(p.z,.55);assert.equal(p.hit,'長椅')});
+test('oblique movement slides along obstacle',()=>{let p=moveWithCollisions({x:0,z:3},{x:1,z:-5});near(p.z,.55);near(p.x,1)});
+test('moving away from touching an obstacle is permitted',()=>{let p=moveWithCollisions({x:0,z:.55001},{x:0,z:1});near(p.z,1.55001)});
+test('diagonal movement stops at corner and does not cross walls',()=>{let p=moveWithCollisions({x:7,z:8},{x:5,z:5});assert.ok(p.x<=7.60001&&p.z<=8.60001)});
+test('different room obstacle layouts can be supplied',()=>{let p=moveWithCollisions({x:0,z:0},{x:5,z:0},[{minX:2,maxX:3,minZ:-1,maxZ:1,name:'box'}]);near(p.x,1.75)});

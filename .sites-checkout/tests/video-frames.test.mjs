@@ -1,0 +1,8 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {samplingTimes,extractVideoFrames} from '../dist/modules/video-frames.mjs';
+test('sampling is ordered, inside the clip and limited to 60 frames',()=>{const times=samplingTimes(90);assert.equal(times.length,60);assert.ok(times[0]>0&&times.at(-1)<90);assert.ok(times.every((t,i)=>i===0||t>times[i-1]));assert.throws(()=>samplingTimes(Infinity))});
+test('video frames are extracted in order and decoder resources are released',async()=>{
+  const originalDocument=globalThis.document,oldCreate=URL.createObjectURL,oldRevoke=URL.revokeObjectURL;let revoked=false,draws=0;
+  class Video extends EventTarget{constructor(){super();this.duration=5;this.videoWidth=1920;this.videoHeight=1080;this.src=''}setAttribute(){}removeAttribute(){this.src=''}pause(){}load(){if(this.src)queueMicrotask(()=>this.dispatchEvent(new Event('loadedmetadata')))}set currentTime(t){this._currentTime=t;queueMicrotask(()=>this.dispatchEvent(new Event('seeked')))}}
+  const video=new Video();globalThis.document={createElement(kind){if(kind==='video')return video;return {width:0,height:0,getContext:()=>({drawImage(){draws++}}),toBlob(cb){cb(new Blob(['frame'],{type:'image/jpeg'}))}}}};URL.createObjectURL=()=> 'blob:test';URL.revokeObjectURL=()=>{revoked=true};
+  try{let updates=[];const result=await extractVideoFrames(new File(['test'],'scan.mov',{type:'video/quicktime'}),{onProgress:(a,b)=>updates.push([a,b])});assert.equal(result.length,10);assert.equal(draws,10);assert.equal(result[0].name,'frame-001.jpg');assert.deepEqual(updates.at(-1),[10,10]);assert.equal(revoked,true)}finally{globalThis.document=originalDocument;URL.createObjectURL=oldCreate;URL.revokeObjectURL=oldRevoke}
+});

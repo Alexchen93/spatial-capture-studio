@@ -1,0 +1,3 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {createZip,crc32} from '../dist/modules/zip.mjs';
+test('CRC-32 matches standard vector',()=>assert.equal(crc32(new TextEncoder().encode('123456789')),0xcbf43926));
+test('ZIP has local, central and end headers',async()=>{let data=new Uint8Array(await(await createZip([{name:'photo-001.jpg',blob:new Blob(['hello'])}])).arrayBuffer());let v=new DataView(data.buffer);assert.equal(v.getUint32(0,true),0x04034b50);assert.equal(v.getUint32(data.length-22,true),0x06054b50);assert.equal(v.getUint16(data.length-14,true),1);assert.equal(v.getUint32(v.getUint32(data.length-6,true),true),0x02014b50)});

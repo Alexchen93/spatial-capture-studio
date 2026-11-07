@@ -1,0 +1,4 @@
+Splat.js
+https://github.com/arrival-space/splat.js
+Commit a84620c05f210a304b2d8de1d5c9f19d3657126f
+MIT License. Unused video modules and synthetic generator were excluded.
