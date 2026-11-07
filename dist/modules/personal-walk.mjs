@@ -59,7 +59,7 @@ function defaultScene(record,parsed){
     bounds,
     obstacles:Array.isArray(saved?.obstacles)?clone(saved.obstacles).map((item,index)=>({...item,id:typeof item?.id==='string'&&item.id?item.id:createId(),name:typeof item?.name==='string'&&item.name.trim()?item.name.trim().slice(0,48):`碰撞區 ${index+1}`})):[],
     start:saved?.start&&Number.isFinite(saved.start.x)&&Number.isFinite(saved.start.z)?clone(saved.start):cameras.length?{x:0,z:0}:{x:(bounds.minX+bounds.maxX)/2,z:(bounds.minZ+bounds.maxZ)/2},
-    eyeHeight:Number.isFinite(saved?.eyeHeight)?saved.eyeHeight:cameras.length&&-calibration.floorHeight>.1&&-calibration.floorHeight<100?-calibration.floorHeight:1.62,
+    eyeHeight:Number.isFinite(saved?.eyeHeight)?saved.eyeHeight:cameras.length?-calibration.floorHeight:1.62,
   };
   validateWalkScene(initial);
   return initial;
@@ -261,7 +261,7 @@ function resizeRenderCanvas(){
 
 function updateViewCamera(){
   if(!walkSession||!walking||!RENDER_CANVAS.width||!RENDER_CANVAS.height)return;
-  walkSession.view.setCamera(cameraPose(scene.calibration,player,{yaw,pitch,eyeHeight:scene.eyeHeight||1.62,width:RENDER_CANVAS.width,height:RENDER_CANVAS.height,fovDeg:76,floorHeight:scene.calibration.floorHeight||0}));
+  walkSession.view.setCamera(cameraPose(scene.calibration,player,{yaw,pitch,eyeHeight:Number.isFinite(scene.eyeHeight)?scene.eyeHeight:1.62,width:RENDER_CANVAS.width,height:RENDER_CANVAS.height,fovDeg:76,floorHeight:scene.calibration.floorHeight||0}));
 }
 
 function tickWalk(now){

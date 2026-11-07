@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {assessCaptureFrame} from '../dist/modules/live-capture.mjs';
-import {makeDefaultCalibration,worldToScene} from '../dist/modules/walk-scene.mjs';
+import {cameraCenter,cameraPose,makeDefaultCalibration,worldToScene} from '../dist/modules/walk-scene.mjs';
 
 function frame(width,height,shift=0){
   const pixels=new Uint8ClampedArray(width*height*4);
@@ -25,4 +25,7 @@ test('scene origin follows the earliest localized capture, not camera result ord
   const calibration=makeDefaultCalibration([pose(5,5),pose(0,2)]);
   assert.ok(calibration.origin.every((value,index)=>Math.abs(value-[2,0,0][index])<1e-8));
   assert.ok(Object.values(worldToScene([2,0,0],calibration)).every(value=>Math.abs(value)<1e-8));
+  calibration.floorHeight=-2.4;
+  const view=cameraPose(calibration,{x:0,z:0},{eyeHeight:-calibration.floorHeight,floorHeight:calibration.floorHeight});
+  assert.ok(cameraCenter(view).every((value,index)=>Math.abs(value-calibration.origin[index])<1e-8));
 });
