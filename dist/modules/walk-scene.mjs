@@ -67,6 +67,26 @@ export function boundsObstacles(bounds,thickness){
   ];
 }
 
+export function findSafeStart(scene,radius=.25){
+  const{bounds,start,obstacles=[]}=scene;
+  const safe=position=>position.x>=bounds.minX+radius&&position.x<=bounds.maxX-radius&&position.z>=bounds.minZ+radius&&position.z<=bounds.maxZ-radius&&
+    !obstacles.some(box=>position.x>=box.minX-radius&&position.x<=box.maxX+radius&&position.z>=box.minZ-radius&&position.z<=box.maxZ+radius);
+  if(safe(start))return{...start};
+  const minX=bounds.minX+radius,maxX=bounds.maxX-radius,minZ=bounds.minZ+radius,maxZ=bounds.maxZ-radius;
+  if(minX>maxX||minZ>maxZ)throw new Error('步行範圍太窄，沒有可站立的位置。');
+  const xSteps=Math.min(100,Math.max(1,Math.ceil((maxX-minX)/.4)));
+  const zSteps=Math.min(100,Math.max(1,Math.ceil((maxZ-minZ)/.4)));
+  let nearest=null,best=Infinity;
+  for(let zi=0;zi<=zSteps;zi++)for(let xi=0;xi<=xSteps;xi++){
+    const position={x:minX+(maxX-minX)*xi/xSteps,z:minZ+(maxZ-minZ)*zi/zSteps};
+    if(!safe(position))continue;
+    const distance=(position.x-start.x)**2+(position.z-start.z)**2;
+    if(distance<best){nearest=position;best=distance}
+  }
+  if(!nearest)throw new Error('範圍內沒有可站立的位置；請移動或縮小碰撞區。');
+  return nearest;
+}
+
 export function validateWalkScene(scene){
   const c=scene?.calibration||{};if(!Array.isArray(c.origin)||c.origin.length!==3||!c.origin.every(Number.isFinite))throw new Error('座標原點必須是三個有限數值。');
   const units=Number(c.unitsPerMeter);if(!Number.isFinite(units)||units<.001||units>10000)throw new Error('模型尺度需介於 0.001 到 10,000 模型單位／公尺。');
@@ -74,6 +94,7 @@ export function validateWalkScene(scene){
   if(c.headingDeg!==undefined&&!Number.isFinite(c.headingDeg))throw new Error('方向修正必須是有限數值。');
   if(c.floorHeight!==undefined&&!Number.isFinite(c.floorHeight))throw new Error('地板高度偏移必須是有限數值。');
   const{minX,maxX,minZ,maxZ}=scene.bounds||{};boundsObstacles({minX:Number(minX),maxX:Number(maxX),minZ:Number(minZ),maxZ:Number(maxZ)},1);
+  if(!Number.isFinite(maxX-minX)||!Number.isFinite(maxZ-minZ))throw new Error('步行範圍過大。');
   if((scene.obstacles||[]).length>100)throw new Error('人工碰撞區最多只能有 100 個。');
   for(const item of scene.obstacles||[]){if(![item.minX,item.maxX,item.minZ,item.maxZ].every(Number.isFinite)||item.minX>=item.maxX||item.minZ>=item.maxZ)throw new Error('每個碰撞區都必須有有效的寬度與深度。')}
   return true;

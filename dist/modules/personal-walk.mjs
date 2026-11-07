@@ -1,7 +1,7 @@
 import {openStore,listProjects,getProject,putProject,deleteProject} from './captures.mjs';
 import {parseGaussianPly} from './ply-reader.mjs';
 import {moveWithCollisions,CHARACTER_RADIUS} from './movement.mjs';
-import {boundsObstacles,cameraCenter,cameraPose,makeDefaultCalibration,pointCloudBounds,validateWalkScene,worldToScene} from './walk-scene.mjs';
+import {boundsObstacles,cameraCenter,cameraPose,findSafeStart,makeDefaultCalibration,pointCloudBounds,validateWalkScene,worldToScene} from './walk-scene.mjs';
 
 const $=id=>document.getElementById(id);
 const PAGE_STATUS=$('pageStatus'),PROJECT_PICKER=$('projectPicker'),PLAN_CANVAS=$('planCanvas'),RENDER_CANVAS=$('renderCanvas');
@@ -76,7 +76,7 @@ async function refreshProjects(preferredId=currentProject?.id){
     if(!projects.length){const option=document.createElement('option');option.value='';option.textContent='尚無已儲存場景';PROJECT_PICKER.append(option)}
     for(const project of projects){const option=document.createElement('option');option.value=project.id;option.textContent=`${project.name||'未命名場景'}${project.updated?` · ${new Date(project.updated).toLocaleDateString('zh-TW')}`:''}`;PROJECT_PICKER.append(option)}
     if(preferredId&&projects.some(item=>item.id===preferredId))PROJECT_PICKER.value=preferredId;
-    else if(!currentProject)PROJECT_PICKER.value='';
+    else if(!currentProject)PROJECT_PICKER.value=projects[0]?.id||'';
   }catch(error){message(`無法讀取瀏覽器中的場景清單：${error.message||error}`,'warning')}
   updateButtons();
 }
@@ -116,7 +116,7 @@ function renderFields(){
 
 function obstacleChanged(obstacle,key,value,input){
   const previous=obstacle[key];obstacle[key]=value;
-  try{validateWalkScene(scene);input.value=key==='name'?value:formatNumber(value);drawPlan();walkMessage('')}
+  try{validateWalkScene(scene);input.value=key==='name'?value:formatNumber(value);renderPlan();walkMessage('')}
   catch(error){obstacle[key]=previous;input.value=key==='name'?previous:formatNumber(previous);message(error.message,'warning')}
 }
 
@@ -126,8 +126,8 @@ function renderObstacles(){
   for(const [index,obstacle] of scene.obstacles.entries()){
     const card=document.createElement('article');card.className='obstacle-card';card.setAttribute('aria-selected',String(selectedObstacle===obstacle.id));
     const head=document.createElement('div');head.className='obstacle-card-head';
-    const select=document.createElement('button');select.type='button';select.className='obstacle-select';select.textContent=`${index+1}. ${obstacle.name||'碰撞區'}`;select.setAttribute('aria-pressed',String(selectedObstacle===obstacle.id));select.onclick=()=>{selectedObstacle=obstacle.id;renderObstacles();drawPlan()};
-    const remove=document.createElement('button');remove.type='button';remove.className='obstacle-remove';remove.textContent='×';remove.setAttribute('aria-label',`刪除${obstacle.name||`碰撞區 ${index+1}`}`);remove.onclick=()=>{scene.obstacles=scene.obstacles.filter(item=>item.id!==obstacle.id);if(selectedObstacle===obstacle.id)selectedObstacle=null;renderObstacles();drawPlan();updateButtons();message('已移除碰撞區；請儲存校正以保留變更。','warning')};
+    const select=document.createElement('button');select.type='button';select.className='obstacle-select';select.textContent=`${index+1}. ${obstacle.name||'碰撞區'}`;select.setAttribute('aria-pressed',String(selectedObstacle===obstacle.id));select.onclick=()=>{selectedObstacle=obstacle.id;renderObstacles();renderPlan()};
+    const remove=document.createElement('button');remove.type='button';remove.className='obstacle-remove';remove.textContent='×';remove.setAttribute('aria-label',`刪除${obstacle.name||`碰撞區 ${index+1}`}`);remove.onclick=()=>{scene.obstacles=scene.obstacles.filter(item=>item.id!==obstacle.id);if(selectedObstacle===obstacle.id)selectedObstacle=null;renderObstacles();renderPlan();updateButtons();message('已移除碰撞區；請儲存校正以保留變更。','warning')};
     head.append(select,remove);
     const nameLabel=document.createElement('label');nameLabel.textContent='名稱';const nameInput=document.createElement('input');nameInput.type='text';nameInput.maxLength=48;nameInput.value=obstacle.name||`碰撞區 ${index+1}`;nameInput.setAttribute('aria-label',`碰撞區 ${index+1} 名稱`);nameInput.addEventListener('change',()=>{obstacleChanged(obstacle,'name',nameInput.value.trim()||`碰撞區 ${index+1}`,nameInput);select.textContent=`${index+1}. ${obstacle.name}`;remove.setAttribute('aria-label',`刪除${obstacle.name}`)});nameLabel.append(nameInput);
     const fields=document.createElement('div');fields.className='obstacle-fields';
@@ -142,21 +142,21 @@ function setCalibrationField(id){
   const value=finiteInput(id);if(!Number.isFinite(value)){message('請輸入有效數字。','warning');renderFields();return}
   const [group,key,index]=NUM_FIELDS[id];const previous=clone(scene.calibration);
   if(index===undefined)scene.calibration[key]=value;else scene.calibration[key][index]=value;
-  try{validateWalkScene(scene);message('校正已變更；請檢查點雲與範圍，並儲存變更。','warning');drawPlan()}
+  try{validateWalkScene(scene);message('校正已變更；請檢查點雲與範圍，並儲存變更。','warning');renderPlan()}
   catch(error){scene.calibration=previous;message(error.message,'warning');renderFields()}
 }
 
 function setBoundsFromFields(){
   const next={minX:finiteInput('boundMinX'),maxX:finiteInput('boundMaxX'),minZ:finiteInput('boundMinZ'),maxZ:finiteInput('boundMaxZ')};
   const previous=scene.bounds;scene.bounds=next;
-  try{validateWalkScene(scene);renderFields();drawPlan();message('步行範圍已變更；請儲存校正以保留變更。','warning')}
+  try{validateWalkScene(scene);renderFields();renderPlan();message('步行範圍已變更；請儲存校正以保留變更。','warning')}
   catch(error){scene.bounds=previous;renderFields();message(error.message,'warning')}
 }
 
 function setStartFromFields(){
   const x=finiteInput('startX'),z=finiteInput('startZ');
   if(!Number.isFinite(x)||!Number.isFinite(z)){renderFields();message('起點 X、Z 都必須是有效數字。','warning');return}
-  scene.start={x,z};drawPlan();message('步行起點已變更；請儲存校正以保留變更。','warning')
+  scene.start={x,z};renderPlan();message('步行起點已變更；請儲存校正以保留變更。','warning')
 }
 
 function planSize(){
@@ -171,15 +171,17 @@ function renderPlan(preview=null){
   const size=planSize();if(!size)return;const{ctx,w,h}=size;ctx.clearRect(0,0,w,h);ctx.fillStyle='#101715';ctx.fillRect(0,0,w,h);mapState=null;
   if(!model||!scene){$('planEmpty').hidden=false;return}
   $('planEmpty').hidden=true;
-  const bounds=scene.bounds,pad=30,scale=Math.max(.001,Math.min((w-2*pad)/(bounds.maxX-bounds.minX),(h-2*pad)/(bounds.maxZ-bounds.minZ)));
+  const bounds=scene.bounds,pad=30,scale=Math.min((w-2*pad)/(bounds.maxX-bounds.minX),(h-2*pad)/(bounds.maxZ-bounds.minZ));
+  if(!Number.isFinite(scale)||scale<=0)return;
   mapState={bounds,pad,scale,w,h};
   const xAt=x=>pad+(x-bounds.minX)*scale,yAt=z=>pad+(bounds.maxZ-z)*scale;
   const left=xAt(bounds.minX),right=xAt(bounds.maxX),top=yAt(bounds.maxZ),bottom=yAt(bounds.minZ);
   ctx.fillStyle='#151e19';ctx.fillRect(left,top,right-left,bottom-top);
   ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,bottom-top);ctx.clip();
-  ctx.strokeStyle='rgba(160,184,157,.11)';ctx.lineWidth=1;const step=scale<22?1:0.5;
-  const firstX=Math.ceil(bounds.minX/step)*step;for(let x=firstX;x<bounds.maxX;x+=step){const sx=xAt(x);ctx.beginPath();ctx.moveTo(sx,top);ctx.lineTo(sx,bottom);ctx.stroke()}
-  const firstZ=Math.ceil(bounds.minZ/step)*step;for(let z=firstZ;z<bounds.maxZ;z+=step){const sy=yAt(z);ctx.beginPath();ctx.moveTo(left,sy);ctx.lineTo(right,sy);ctx.stroke()}
+  ctx.strokeStyle='rgba(160,184,157,.11)';ctx.lineWidth=1;
+  const minStep=28/scale,magnitude=10**Math.floor(Math.log10(minStep)),step=[1,2,5,10].map(n=>n*magnitude).find(n=>n>=minStep);
+  const firstX=Math.ceil(bounds.minX/step)*step;for(let i=0;i<100;i++){const x=firstX+i*step;if(x>=bounds.maxX)break;const sx=xAt(x);ctx.beginPath();ctx.moveTo(sx,top);ctx.lineTo(sx,bottom);ctx.stroke()}
+  const firstZ=Math.ceil(bounds.minZ/step)*step;for(let i=0;i<100;i++){const z=firstZ+i*step;if(z>=bounds.maxZ)break;const sy=yAt(z);ctx.beginPath();ctx.moveTo(left,sy);ctx.lineTo(right,sy);ctx.stroke()}
   const stride=16,count=model.n,sample=Math.max(1,Math.ceil(count/12000));ctx.fillStyle='rgba(202,232,165,.38)';
   for(let i=0;i<count;i+=sample){const at=i*stride,p=worldToScene([model.data[at],model.data[at+1],model.data[at+2]],scene.calibration);if(p.x<bounds.minX||p.x>bounds.maxX||p.z<bounds.minZ||p.z>bounds.maxZ)continue;ctx.beginPath();ctx.arc(xAt(p.x),yAt(p.z),Math.max(.8,Math.min(1.8,scale*.035)),0,Math.PI*2);ctx.fill()}
   for(const camera of validCameras(currentProject?.cameras)){const center=cameraCenter(camera),p=worldToScene(center,scene.calibration);if(p.x<bounds.minX||p.x>bounds.maxX||p.z<bounds.minZ||p.z>bounds.maxZ)continue;ctx.fillStyle='#69c9e2';ctx.beginPath();ctx.arc(xAt(p.x),yAt(p.z),3.2,0,Math.PI*2);ctx.fill()}
@@ -205,6 +207,7 @@ function findObstacleAt(point){
 }
 
 function finishDraw(point){
+  if(scene.obstacles.length>=100){message('人工碰撞區最多只能有 100 個。','warning');return}
   const minX=Math.min(drag.start.x,point.x),maxX=Math.max(drag.start.x,point.x),minZ=Math.min(drag.start.z,point.z),maxZ=Math.max(drag.start.z,point.z);
   if(maxX-minX<.2||maxZ-minZ<.2){message('拖曳距離太短；請至少畫出 0.2 公尺寬、深的碰撞區。','warning');return}
   const item={id:createId(),name:`碰撞區 ${scene.obstacles.length+1}`,minX,maxX,minZ,maxZ};scene.obstacles.push(item);selectedObstacle=item.id;renderObstacles();updateButtons();message('已新增碰撞區；可用數值欄位精修，再儲存校正。','warning')
@@ -215,42 +218,28 @@ PLAN_CANVAS.addEventListener('pointerdown',event=>{
   PLAN_CANVAS.setPointerCapture(event.pointerId);const hit=findObstacleAt(point);
   if(hit){selectedObstacle=hit.id;drag={type:'move',start:point,initial:{minX:hit.minX,maxX:hit.maxX,minZ:hit.minZ,maxZ:hit.maxZ},id:hit.id};renderObstacles()}
   else drag={type:'draw',start:point,current:point};
-  drawPlan(drag?.type==='draw'?drag:null);
+  renderPlan(drag?.type==='draw'?drag:null);
 });
 PLAN_CANVAS.addEventListener('pointermove',event=>{
   if(!drag)return;const point=planPoint(event);if(!point)return;
-  if(drag.type==='draw'){drag.current=point;drawPlan(drag)}
-  else{const obstacle=scene.obstacles.find(item=>item.id===drag.id);if(!obstacle)return;const dx=point.x-drag.start.x,dz=point.z-drag.start.z;obstacle.minX=drag.initial.minX+dx;obstacle.maxX=drag.initial.maxX+dx;obstacle.minZ=drag.initial.minZ+dz;obstacle.maxZ=drag.initial.maxZ+dz;drawPlan()}
+  if(drag.type==='draw'){drag.current=point;renderPlan(drag)}
+  else{const obstacle=scene.obstacles.find(item=>item.id===drag.id);if(!obstacle)return;const dx=point.x-drag.start.x,dz=point.z-drag.start.z;obstacle.minX=drag.initial.minX+dx;obstacle.maxX=drag.initial.maxX+dx;obstacle.minZ=drag.initial.minZ+dz;obstacle.maxZ=drag.initial.maxZ+dz;renderPlan()}
 });
 function endPlanPointer(event){
   if(!drag)return;const point=planPoint(event)||drag.current;
   if(drag.type==='draw'&&point)finishDraw(point);
   else if(drag.type==='move'){renderObstacles();message('碰撞區位置已變更；請儲存校正以保留變更。','warning')}
-  drag=null;drawPlan();updateButtons();
+  drag=null;renderPlan();updateButtons();
 }
 PLAN_CANVAS.addEventListener('pointerup',endPlanPointer);
 PLAN_CANVAS.addEventListener('pointercancel',()=>{
   if(drag?.type==='move'){const obstacle=scene?.obstacles.find(item=>item.id===drag.id);if(obstacle)Object.assign(obstacle,drag.initial);renderObstacles()}
-  drag=null;drawPlan();updateButtons();
+  drag=null;renderPlan();updateButtons();
 });
 
 function addObstacleAtCenter(){
   if(!scene||scene.obstacles.length>=100)return;const centerX=(scene.bounds.minX+scene.bounds.maxX)/2,centerZ=(scene.bounds.minZ+scene.bounds.maxZ)/2,w=Math.min(1,(scene.bounds.maxX-scene.bounds.minX)/3),d=Math.min(1,(scene.bounds.maxZ-scene.bounds.minZ)/3);
-  const item={id:createId(),name:`碰撞區 ${scene.obstacles.length+1}`,minX:centerX-w/2,maxX:centerX+w/2,minZ:centerZ-d/2,maxZ:centerZ+d/2};scene.obstacles.push(item);selectedObstacle=item.id;renderObstacles();drawPlan();updateButtons();message('已新增碰撞區；請設定位置和尺寸，再儲存校正。','warning')
-}
-
-function isSafePosition(position){
-  const b=scene.bounds,r=CHARACTER_RADIUS;
-  if(position.x<b.minX+r||position.x>b.maxX-r||position.z<b.minZ+r||position.z>b.maxZ-r)return false;
-  return !scene.obstacles.some(box=>position.x>=box.minX-r&&position.x<=box.maxX+r&&position.z>=box.minZ-r&&position.z<=box.maxZ+r);
-}
-
-function findSafeStart(){
-  if(isSafePosition(scene.start))return{...scene.start};
-  const b=scene.bounds,step=.4,candidates=[];
-  for(let z=b.minZ+CHARACTER_RADIUS+.02;z<=b.maxZ-CHARACTER_RADIUS;z+=step)for(let x=b.minX+CHARACTER_RADIUS+.02;x<=b.maxX-CHARACTER_RADIUS;x+=step)candidates.push({x,z});
-  candidates.sort((a,b2)=>Math.hypot(a.x-scene.start.x,a.z-scene.start.z)-Math.hypot(b2.x-scene.start.x,b2.z-scene.start.z));
-  const safe=candidates.find(isSafePosition);if(!safe)throw new Error('範圍內沒有可站立的位置；請移動或縮小碰撞區。');return safe;
+  const item={id:createId(),name:`碰撞區 ${scene.obstacles.length+1}`,minX:centerX-w/2,maxX:centerX+w/2,minZ:centerZ-d/2,maxZ:centerZ+d/2};scene.obstacles.push(item);selectedObstacle=item.id;renderObstacles();renderPlan();updateButtons();message('已新增碰撞區；請設定位置和尺寸，再儲存校正。','warning')
 }
 
 function resizeRenderCanvas(){
@@ -278,7 +267,7 @@ function tickWalk(now){
 
 async function startWalk(){
   if(loading||!scene||!model||!gpuReady)return;
-  try{validateWalkScene(scene);player=findSafeStart()}
+  try{validateWalkScene(scene);player=findSafeStart(scene,CHARACTER_RADIUS)}
   catch(error){message(error.message,'error');return}
   if(player.x!==scene.start.x||player.z!==scene.start.z){scene.start={...player};renderFields();message('原起點落在障礙物或範圍外，已移至最近可站立位置。儲存前可再調整。','warning')}
   loading=true;updateButtons();message('正在準備本機 WebGPU 步行預覽；請保持頁面開啟。');
@@ -294,15 +283,15 @@ async function startWalk(){
 
 function stopWalk(){
   if(!walking)return;walking=false;if(walkFrame)cancelAnimationFrame(walkFrame);walkFrame=0;held.clear();scene.start={...player};renderFields();
-  $('renderStage').hidden=true;$('planStage').hidden=false;$('returnToPlan').hidden=true;$('stageTitle').textContent='俯視校正平面';document.body.classList.remove('is-walking');drawPlan();walkMessage('目前位置已設為新的步行起點；按「儲存校正」保留變更。');message('已返回校正平面。');
+  $('renderStage').hidden=true;$('planStage').hidden=false;$('returnToPlan').hidden=true;$('stageTitle').textContent='俯視校正平面';document.body.classList.remove('is-walking');renderPlan();walkMessage('目前位置已設為新的步行起點；按「儲存校正」保留變更。');message('已返回校正平面。');
 }
 
 async function saveScene(){
   if(!currentProject||!model||!scene)return;loading=true;updateButtons();message('正在將 PLY 和場景校正寫入此瀏覽器…');
   try{
-    if(!db)db=await openStore();const name=$('projectName').value.trim().slice(0,80)||'未命名場景';
+    validateWalkScene(scene);if(!db)db=await openStore();const name=$('projectName').value.trim().slice(0,80)||'未命名場景';
     const updated={...currentProject,name,scene:clone(scene),updated:Date.now(),version:1};await putProject(db,updated);currentProject=updated;await refreshProjects(updated.id);message(`已儲存「${name}」；PLY、尺度、地板、範圍和人工碰撞區都留在此瀏覽器。`)
-  }catch(error){message(`儲存失敗：${error.message||error}。請確認瀏覽器儲存空間仍足夠。`,'error')}
+  }catch(error){message(`儲存失敗：${error.message||error}`,'error')}
   finally{loading=false;updateButtons()}
 }
 
@@ -327,7 +316,7 @@ for(const id of Object.keys(NUM_FIELDS))$(id).addEventListener('change',()=>setC
 for(const id of ['boundMinX','boundMaxX','boundMinZ','boundMaxZ'])$(id).addEventListener('change',setBoundsFromFields);
 for(const id of ['startX','startZ'])$(id).addEventListener('change',setStartFromFields);
 $('projectName').addEventListener('change',()=>{if(currentProject)currentProject={...currentProject,name:$('projectName').value.trim().slice(0,80)||'未命名場景'}});
-$('fitBounds').addEventListener('click',()=>{if(!scene||!model)return;scene.bounds=pointCloudBounds(model.data,scene.calibration);scene.start={x:(scene.bounds.minX+scene.bounds.maxX)/2,z:(scene.bounds.minZ+scene.bounds.maxZ)/2};renderFields();drawPlan();message('已依目前校正重算範圍與起點；人工碰撞區維持原座標，請檢查並儲存。','warning')});
+$('fitBounds').addEventListener('click',()=>{if(!scene||!model)return;scene.bounds=pointCloudBounds(model.data,scene.calibration);scene.start={x:(scene.bounds.minX+scene.bounds.maxX)/2,z:(scene.bounds.minZ+scene.bounds.maxZ)/2};renderFields();renderPlan();message('已依目前校正重算範圍與起點；人工碰撞區維持原座標，請檢查並儲存。','warning')});
 $('addObstacle').addEventListener('click',addObstacleAtCenter);$('saveScene').addEventListener('click',saveScene);$('startWalk').addEventListener('click',startWalk);$('returnToPlan').addEventListener('click',stopWalk);$('deleteProject').addEventListener('click',removeProject);
 $('refreshProjects').addEventListener('click',()=>refreshProjects());
 $('plyFile').addEventListener('change',async event=>{await importPly(event.target.files?.[0]);event.target.value=''});
@@ -349,7 +338,7 @@ const KEY_DIRECTIONS={KeyW:'forward',ArrowUp:'forward',KeyS:'back',ArrowDown:'ba
 window.addEventListener('keydown',event=>{if(!walking)return;const active=document.activeElement,editing=active instanceof HTMLInputElement||active instanceof HTMLTextAreaElement||active instanceof HTMLSelectElement;if(editing)return;if(event.key==='Escape'){stopWalk();return}const direction=KEY_DIRECTIONS[event.code];if(direction){event.preventDefault();held.add(direction)}});
 window.addEventListener('keyup',event=>{const direction=KEY_DIRECTIONS[event.code];if(direction)held.delete(direction)});
 window.addEventListener('blur',()=>held.clear());
-window.addEventListener('keydown',event=>{const active=document.activeElement,editing=active instanceof HTMLInputElement||active instanceof HTMLTextAreaElement||active instanceof HTMLSelectElement;if(event.key==='Delete'&&selectedObstacle&&!editing&&!walking){scene.obstacles=scene.obstacles.filter(item=>item.id!==selectedObstacle);selectedObstacle=null;renderObstacles();drawPlan();updateButtons();message('已移除選取的碰撞區；請儲存校正以保留變更。','warning')}});
+window.addEventListener('keydown',event=>{const active=document.activeElement,editing=active instanceof HTMLInputElement||active instanceof HTMLTextAreaElement||active instanceof HTMLSelectElement;if(event.key==='Delete'&&selectedObstacle&&!editing&&!walking){scene.obstacles=scene.obstacles.filter(item=>item.id!==selectedObstacle);selectedObstacle=null;renderObstacles();renderPlan();updateButtons();message('已移除選取的碰撞區；請儲存校正以保留變更。','warning')}});
 
 if(typeof ResizeObserver==='function'){resizeObserver=new ResizeObserver(()=>{renderPlan();resizeRenderCanvas()});resizeObserver.observe(PLAN_CANVAS);resizeObserver.observe(RENDER_CANVAS)}
 else window.addEventListener('resize',()=>{renderPlan();resizeRenderCanvas()});

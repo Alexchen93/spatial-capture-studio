@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {moveWithCollisions} from '../dist/modules/movement.mjs';
-import {boundsObstacles,cameraCenter,cameraPose,makeDefaultCalibration,sceneToWorld,validateWalkScene,worldToScene} from '../dist/modules/walk-scene.mjs';
+import {boundsObstacles,cameraCenter,cameraPose,findSafeStart,makeDefaultCalibration,sceneToWorld,validateWalkScene,worldToScene} from '../dist/modules/walk-scene.mjs';
 
 const near=(a,b,tol=1e-5)=>assert.ok(Math.abs(a-b)<tol,`${a} != ${b}`);
 const camera={R:[1,0,0,0,-1,0,0,0,-1],t:[0,1,5]};
@@ -25,4 +25,13 @@ test('derived scene boundary stops movement but permits sliding along it',()=>{
 
 test('scene validation rejects invalid scale, bounds, and colliders',()=>{
   const good={calibration:{origin:[0,0,0],unitsPerMeter:1},bounds:{minX:-2,maxX:2,minZ:-3,maxZ:3},obstacles:[]};assert.equal(validateWalkScene(good),true);assert.throws(()=>validateWalkScene({...good,calibration:{...good.calibration,unitsPerMeter:0}}),/尺度/);assert.throws(()=>validateWalkScene({...good,calibration:{...good.calibration,up:[0,Infinity,0]}}),/方向向量/);assert.throws(()=>validateWalkScene({...good,calibration:{...good.calibration,headingDeg:NaN}}),/方向修正/);assert.throws(()=>validateWalkScene({...good,bounds:{minX:1,maxX:1,minZ:-1,maxZ:1}}),/範圍/);assert.throws(()=>validateWalkScene({...good,obstacles:[{minX:1,maxX:0,minZ:-1,maxZ:1}]}),/碰撞區/);
+  assert.throws(()=>validateWalkScene({...good,bounds:{minX:-1e308,maxX:1e308,minZ:0,maxZ:1}}),/範圍過大/);
+  assert.throws(()=>validateWalkScene({...good,obstacles:Array.from({length:101},(_,i)=>({minX:i,maxX:i+1,minZ:0,maxZ:1}))}),/100/);
+});
+
+test('safe start search remains bounded for very large finite walk areas',()=>{
+  const scene={bounds:{minX:0,maxX:1e9,minZ:0,maxZ:1e9},start:{x:-1,z:-1},obstacles:[]};
+  assert.equal(validateWalkScene({...scene,calibration:{origin:[0,0,0],unitsPerMeter:1}}),true);
+  assert.deepEqual(findSafeStart(scene),{x:.25,z:.25});
+  assert.throws(()=>findSafeStart({bounds:{minX:0,maxX:.4,minZ:0,maxZ:.4},start:{x:0,z:0},obstacles:[]}),/太窄/);
 });
