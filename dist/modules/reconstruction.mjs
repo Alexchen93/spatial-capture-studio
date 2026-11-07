@@ -9,8 +9,14 @@ export function trainingHealthMessage(elapsedMs,quietMs,finishing=false){
   if(quietMs>=30000)return `已超過 ${duration(quietMs)} 未收到 GPU 進度回報（開始後 ${duration(elapsedMs)}）。可能仍在運算，也可能卡住；你可以繼續等待或提前結束。`;
   return `開始後 ${duration(elapsedMs)}；顯示的進度是已收到的 GPU 回報。`;
 }
-export function setupLocalReconstruction(getPhotos, {loadEngine=()=>import('../vendor/splat-js/src/session.js')}={}){
+export function setupLocalReconstruction(getPhotos, {loadEngine=()=>import('../vendor/splat-js/src/session.js'),onSavePersonalScene=async()=>null}={}){
   const el=id=>document.getElementById(id), start=el('reconstructBtn'), panel=el('trainingPanel'), stage=el('trainingStage'), progress=el('trainingProgress'), bar=el('trainingBar'), note=el('trainingNote'), health=el('trainingHealth'), canvas=el('trainingPreview'), pause=el('pauseTraining'), finish=el('finishTraining'), cancel=el('cancelTraining'), exportBtn=el('exportTraining'), deviceStatus=el('deviceStatus'), detail=el('reconstructDetail');
+  let saveSceneButton=el('savePersonalScene'),openPersonalLink=el('openPersonalWalk'),personalSceneSaved=false;
+  if(!saveSceneButton&&typeof document.createElement==='function'){
+    saveSceneButton=document.createElement('button');saveSceneButton.type='button';saveSceneButton.id='savePersonalScene';saveSceneButton.className='training-save-personal';saveSceneButton.textContent='儲存為個人步行場景';saveSceneButton.hidden=true;
+    openPersonalLink=document.createElement('a');openPersonalLink.id='openPersonalWalk';openPersonalLink.className='training-open-personal';openPersonalLink.textContent='開啟個人校正 →';openPersonalLink.hidden=true;
+    (exportBtn?.parentElement||panel)?.append(saveSceneButton,openPersonalLink);
+  }
   let session=null,abort=null,phase='idle',supported=false,cancelRequested=false,inputBusy=false,wasInterrupted=false,earlyFinish=false,monitor=null,startedAt=0,lastConfirmedAt=0,confirmedIter=0,previewIndex=0,observer=null,lastDiagnostic=null,sourceCount=0,lastEngineLog='',activeProfile='標準';
   const minPhotos=8;
   function refresh(){const count=getPhotos().length;if(el('lowLoadMode'))el('lowLoadMode').disabled=inputBusy||!['idle','done','error'].includes(phase);start.disabled=!supported||inputBusy||count<minPhotos||!['idle','done','error'].includes(phase);if(supported&&phase==='idle'){detail.textContent=inputBusy?'影片畫面擷取完成後即可開始。':count<minPhotos?`目前 ${count} 張畫面，還需要 ${minPhotos-count} 張才能開始。`:`已準備 ${count} 張畫面；可開始本機重建。`}}
@@ -34,10 +40,23 @@ export function setupLocalReconstruction(getPhotos, {loadEngine=()=>import('../v
   function updateHealth(){if(!health||!['training','finishing'].includes(phase))return;const now=Date.now(),d=observer?.state;health.hidden=false;health.textContent=`已確認 ${confirmedIter} / ${MAX_ITERS} 次迭代。${trainingHealthMessage(now-startedAt,now-lastConfirmedAt,phase==='finishing')}${d?.supported?` 已提交 ${d.submitted} 次；GPU 佇列回報至第 ${d.queueReturned} 次。${diagnoseTraining(d,confirmedIter)}`:''}`;updateDiagnostics()}
   function beginMonitor(){stopMonitor();startedAt=Date.now();lastConfirmedAt=startedAt;confirmedIter=0;updateHealth();monitor=setInterval(updateHealth,1000)}
   function clearSession(){stopMonitor();if(observer){lastDiagnostic={...observer.state};observer.dispose();observer=null}try{session?.pause();session?.dispose()}catch{}session=null;abort=null;updateDiagnostics()}
-  function fail(message,error){const errorDetail=el('errorDetail');if(errorDetail){errorDetail.textContent=error?`${error.name||'Error'}: ${String(error.message||error).slice(0,300)}`:'';el('errorInfo').hidden=!error}clearSession();phase='error';updateDiagnostics();stage.textContent='本機重建未完成';progress.textContent='';bar.value=0;pause.hidden=true;finish.hidden=true;cancel.hidden=true;exportBtn.hidden=true;note.textContent=message;setStatus('本機重建未完成',message);refresh()}
-  async function exportPly(){if(!session||phase!=='done')return;exportBtn.disabled=true;try{note.textContent='正在整理模型，請稍候。';const blob=await session.exportPlyBlob();if(!blob.size)throw new Error('empty');const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='spatial-capture-scene.ply';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);note.textContent='視覺模型已準備下載；此檔案尚不含碰撞模型。'}catch{note.textContent='無法匯出模型；裝置可能已回收 GPU 資源。'}finally{exportBtn.disabled=false}}
+  function fail(message,error){const errorDetail=el('errorDetail');if(errorDetail){errorDetail.textContent=error?`${error.name||'Error'}: ${String(error.message||error).slice(0,300)}`:'';el('errorInfo').hidden=!error}clearSession();phase='error';updateDiagnostics();stage.textContent='本機重建未完成';progress.textContent='';bar.value=0;pause.hidden=true;finish.hidden=true;cancel.hidden=true;exportBtn.hidden=true;if(saveSceneButton)saveSceneButton.hidden=true;if(openPersonalLink)openPersonalLink.hidden=true;note.textContent=message;setStatus('本機重建未完成',message);refresh()}
+  async function exportPly(){if(!session||phase!=='done')return;exportBtn.disabled=true;if(saveSceneButton)saveSceneButton.disabled=true;try{note.textContent='正在整理模型，請稍候。';const blob=await session.exportPlyBlob();if(!blob.size)throw new Error('empty');const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='spatial-capture-scene.ply';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);note.textContent='視覺模型已準備下載；此檔案尚不含碰撞模型。'}catch{note.textContent='無法匯出模型；裝置可能已回收 GPU 資源。'}finally{exportBtn.disabled=false;if(saveSceneButton)saveSceneButton.disabled=personalSceneSaved}}
+  async function savePersonalScene(){
+    if(!session||phase!=='done'||!saveSceneButton)return;saveSceneButton.disabled=true;exportBtn.disabled=true;
+    try{
+      note.textContent='正在整理並儲存視覺模型，請稍候。';const ply=await session.exportPlyBlob();if(!ply.size)throw new Error('empty');
+      const cameras=(session.recon?.cams||[]).map(c=>({R:Array.from(c.R||[]),t:Array.from(c.t||[]),f:c.f,fy:c.fy,cx:c.cx,cy:c.cy,w:c.w,h:c.h,imgIdx:c.imgIdx}));
+      if(!cameras.length)throw new Error('重建結果沒有可用的相機位置');
+      const saved=await onSavePersonalScene({ply,cameras});if(!saved?.id)throw new Error('無法取得已儲存場景的識別碼');
+      if(openPersonalLink){openPersonalLink.href=`personal-walk.html?project=${encodeURIComponent(saved.id)}`;openPersonalLink.hidden=false}
+      personalSceneSaved=true;saveSceneButton.textContent='已儲存個人場景';
+      note.textContent='已在此瀏覽器儲存個人視覺模型與相機位置；下一步請手動校正尺度、地板和碰撞區。';
+    }catch(error){note.textContent=`無法儲存個人場景：${String(error.message||error).slice(0,220)}。請檢查瀏覽器儲存空間並重試。`}
+     finally{saveSceneButton.disabled=personalSceneSaved;exportBtn.disabled=false}
+  }
   async function startRun(){
-    if(start.disabled)return;clearSession();phase='loading';cancelRequested=false;earlyFinish=false;lastDiagnostic=null;lastEngineLog='';sourceCount=getPhotos().length;if(el('gpuDiagnostics'))el('gpuDiagnostics').hidden=true;abort=new AbortController();panel.hidden=false;el('errorInfo').hidden=true;canvas.hidden=true;pause.hidden=true;finish.hidden=true;exportBtn.hidden=true;cancel.hidden=false;cancel.disabled=false;cancel.textContent='取消';if(el('personalPreviewCaption'))el('personalPreviewCaption').hidden=true;if(el('previewViews'))el('previewViews').hidden=true;previewIndex=0;bar.value=0;progress.textContent='';note.textContent='重建在這台裝置進行。請保持頁面開啟，手機可能發熱並耗電。';setStatus('本機重建進行中','正在處理畫面，請保持頁面開啟。');refresh();
+    if(start.disabled)return;clearSession();phase='loading';cancelRequested=false;earlyFinish=false;personalSceneSaved=false;lastDiagnostic=null;lastEngineLog='';sourceCount=getPhotos().length;if(el('gpuDiagnostics'))el('gpuDiagnostics').hidden=true;abort=new AbortController();panel.hidden=false;el('errorInfo').hidden=true;canvas.hidden=true;pause.hidden=true;finish.hidden=true;exportBtn.hidden=true;if(saveSceneButton){saveSceneButton.hidden=true;saveSceneButton.disabled=false;saveSceneButton.textContent='儲存為個人步行場景'}if(openPersonalLink)openPersonalLink.hidden=true;cancel.hidden=false;cancel.disabled=false;cancel.textContent='取消';if(el('personalPreviewCaption'))el('personalPreviewCaption').hidden=true;if(el('previewViews'))el('previewViews').hidden=true;previewIndex=0;bar.value=0;progress.textContent='';note.textContent='重建在這台裝置進行。請保持頁面開啟，手機可能發熱並耗電。';setStatus('本機重建進行中','正在處理畫面，請保持頁面開啟。');refresh();
     const stillRunning=()=>{if(phase==='error')throw new Error('工作已停止');if(cancelRequested)throw new DOMException('cancelled','AbortError')};
     try{
       updateStage('decode',0,getPhotos().length);
@@ -54,7 +73,7 @@ export function setupLocalReconstruction(getPhotos, {loadEngine=()=>import('../v
         if(e.kind==='device-lost'){fail('瀏覽器中斷了 GPU 工作，請保持頁面開啟或改用其他裝置。');return}
         if(e.kind==='train-complete'&&phase!=='done'){
           phase='done';stopMonitor();updateStage('train',e.iter,MAX_ITERS);
-          stage.textContent=earlyFinish?'已提前結束，模型可下載':'視覺重建完成';progress.textContent='';pause.hidden=true;finish.hidden=true;cancel.hidden=true;exportBtn.hidden=false;
+          stage.textContent=earlyFinish?'已提前結束，模型可下載':'視覺重建完成';progress.textContent='';pause.hidden=true;finish.hidden=true;cancel.hidden=true;exportBtn.hidden=false;if(saveSceneButton)saveSceneButton.hidden=false;
           note.textContent=earlyFinish?'已提前結束，可按「下載 PLY」保存目前結果；畫質可能尚未完成，且不含碰撞模型。':'可按「下載 PLY」保存視覺模型；結果不含碰撞模型，不能作為防穿牆場景。';
           setStatus(earlyFinish?'已提前結束':'視覺模型已完成','此結果尚未建立碰撞模型或尺度校正。');refresh();
         }
@@ -78,6 +97,7 @@ export function setupLocalReconstruction(getPhotos, {loadEngine=()=>import('../v
     cancelRequested=true;abort?.abort();cancel.disabled=true;note.textContent='正在取消，請稍候。';
   };
   exportBtn.onclick=exportPly;
+  if(saveSceneButton)saveSceneButton.onclick=savePersonalScene;
   if(el('copyGpuDiagnostics'))el('copyGpuDiagnostics').onclick=async()=>{const status=el('gpuCopyStatus');updateDiagnostics();try{if(!navigator.clipboard?.writeText)throw new Error('clipboard unavailable');await navigator.clipboard.writeText(el('gpuDiagnosticText').textContent);if(status)status.textContent='已複製'}catch{if(status)status.textContent='請長按上方文字選取並複製。'}};
   window.addEventListener('beforeunload',event=>{if(['loading','solving','seeding','training','paused','finishing'].includes(phase)){event.preventDefault();event.returnValue=''}});
   window.addEventListener('pagehide',()=>{if(['loading','solving','seeding','training','paused','finishing'].includes(phase))wasInterrupted=true;abort?.abort();clearSession()});

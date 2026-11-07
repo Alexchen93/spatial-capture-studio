@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101715">
+  <title>個人場景校正 — Spatial Capture</title>
+  <meta name="description" content="在本機校正重建場景的尺度、地板與人工碰撞區，並嘗試自由步行。">
+  <link rel="stylesheet" href="personal-walk.css">
+</head>
+<body class="walk-body">
+  <header class="walk-header">
+    <a class="brand" href="./index.html" aria-label="回到 Spatial Capture 首頁"><span class="mark" aria-hidden="true">⌬</span><span>SPATIAL <b>/ CAPTURE</b></span></a>
+    <nav aria-label="頁面導覽"><a href="./workspace.html#reconstruct">← 回到工作區</a></nav>
+  </header>
+
+  <main class="walk-shell">
+    <section class="walk-heading">
+      <div class="eyebrow">PERSONAL SCENE / CALIBRATION</div>
+      <h1>校正你的可步行場景。</h1>
+      <p>視覺模型用來呈現空間；請依照俯視點雲手動校正尺度、地板、範圍與障礙物。碰撞區不會從 PLY 自動推算。</p>
+    </section>
+
+    <div id="pageStatus" class="page-status" role="status" aria-live="polite">正在讀取本機場景…</div>
+
+    <div class="walk-layout">
+      <aside class="scene-editor" aria-label="場景校正設定">
+        <section class="editor-section">
+          <h2>選擇場景</h2>
+          <label for="projectPicker">已儲存的個人場景</label>
+          <div class="picker-row">
+            <select id="projectPicker"><option value="">尚無已儲存場景</option></select>
+            <button type="button" id="refreshProjects" class="quiet-button" aria-label="重新整理場景清單">更新</button>
+          </div>
+          <div class="picker-row project-actions">
+            <button type="button" id="deleteProject" class="danger-button" disabled>刪除此場景</button>
+            <span id="modelSummary" class="model-summary">尚未載入模型</span>
+          </div>
+          <label for="plyFile">載入 Spatial Capture 匯出的 PLY</label>
+          <input id="plyFile" class="file-control" type="file" accept=".ply,application/octet-stream">
+          <p class="helper">支援本網站的 degree-0 Gaussian PLY（上限 128 MB、25 萬點）；模型與校正只保存在此瀏覽器。</p>
+          <label for="projectName">場景名稱</label>
+          <input id="projectName" type="text" maxlength="80" autocomplete="off" placeholder="例如：客廳掃描">
+        </section>
+
+        <section class="editor-section">
+          <h2>尺度與方向</h2>
+          <p class="helper">設定「每公尺等於多少模型單位」，再用平面上的點雲與相機方向確認對齊。</p>
+          <div class="field-grid">
+            <label>模型單位／公尺<input id="unitsPerMeter" type="number" min="0.001" max="10000" step="0.01" inputmode="decimal"></label>
+            <label>方向修正（度）<input id="headingDeg" type="number" step="1" inputmode="decimal"></label>
+          </div>
+          <fieldset class="field-set">
+            <legend>模型座標原點</legend>
+            <div class="field-grid three-cols">
+              <label>X<input id="originX" type="number" step="0.01" inputmode="decimal"></label>
+              <label>Y<input id="originY" type="number" step="0.01" inputmode="decimal"></label>
+              <label>Z<input id="originZ" type="number" step="0.01" inputmode="decimal"></label>
+            </div>
+          </fieldset>
+          <label>地板高度偏移（公尺）<input id="floorHeight" type="number" step="0.01" inputmode="decimal"></label>
+          <button type="button" id="fitBounds" class="quiet-button full-button" disabled>依目前校正重算步行範圍</button>
+        </section>
+
+        <section class="editor-section">
+          <h2>可行走範圍 <small>公尺</small></h2>
+          <div class="field-grid two-cols">
+            <label>左側 X<input id="boundMinX" type="number" step="0.1" inputmode="decimal"></label>
+            <label>右側 X<input id="boundMaxX" type="number" step="0.1" inputmode="decimal"></label>
+            <label>前方 Z<input id="boundMinZ" type="number" step="0.1" inputmode="decimal"></label>
+            <label>後方 Z<input id="boundMaxZ" type="number" step="0.1" inputmode="decimal"></label>
+          </div>
+          <p class="helper">範圍外會有碰撞邊界；請讓邊界落在可通行的地面內。</p>
+        </section>
+
+        <section class="editor-section">
+          <div class="section-heading">
+            <div><h2>人工碰撞區</h2><p class="helper">在平面空白處拖曳新增，或使用數值欄位精修。</p></div>
+            <button type="button" id="addObstacle" class="quiet-button" disabled>＋ 新增</button>
+          </div>
+          <div id="obstacleList" class="obstacle-list"><p class="helper">載入模型後可新增碰撞區。</p></div>
+        </section>
+
+        <section class="editor-section">
+          <h2>步行起點 <small>公尺</small></h2>
+          <div class="field-grid two-cols">
+            <label>X<input id="startX" type="number" step="0.1" inputmode="decimal"></label>
+            <label>Z<input id="startZ" type="number" step="0.1" inputmode="decimal"></label>
+          </div>
+        </section>
+
+        <section class="editor-actions">
+          <button type="button" id="saveScene" class="primary-button" disabled>儲存校正</button>
+          <button type="button" id="startWalk" class="secondary-button" disabled>開始個人場景步行</button>
+          <p class="helper">步行預覽需要支援 WebGPU 的瀏覽器；所有操作和場景資料都在本機。</p>
+        </section>
+      </aside>
+
+      <section class="walk-stage" aria-label="場景平面編輯與步行預覽">
+        <div class="stage-toolbar">
+          <div><span class="eyebrow">SCENE VIEW</span><strong id="stageTitle">俯視校正平面</strong></div>
+          <button type="button" id="returnToPlan" class="quiet-button" hidden>返回校正</button>
+        </div>
+        <div id="planStage" class="plan-stage">
+          <canvas id="planCanvas" aria-label="場景俯視平面，拖曳空白處建立矩形碰撞區；拖曳現有碰撞區可移動"></canvas>
+          <div id="planEmpty" class="stage-empty">載入重建 PLY 後，這裡會顯示點雲俯視參考。</div>
+          <div class="map-legend" aria-label="俯視圖圖例"><span><i class="legend-points"></i>模型點雲</span><span><i class="legend-cameras"></i>拍攝位置</span><span><i class="legend-obstacles"></i>人工碰撞區</span><span><i class="legend-start"></i>步行起點</span></div>
+        </div>
+        <div id="renderStage" class="render-stage" hidden>
+          <canvas id="renderCanvas" tabindex="0" aria-label="個人重建的第一人稱步行視角；使用 W A S D 或方向控制移動，拖曳視角"></canvas>
+          <div class="render-hud"><span id="walkStatus">步行中</span><span>拖曳看方向 · WASD 移動</span></div>
+          <div class="render-reticle" aria-hidden="true"></div>
+          <div class="touch-pad" aria-label="觸控步行控制">
+            <button type="button" data-move="forward" aria-label="向前移動">↑</button>
+            <div><button type="button" data-move="left" aria-label="向左移動">←</button><button type="button" data-move="back" aria-label="向後移動">↓</button><button type="button" data-move="right" aria-label="向右移動">→</button></div>
+          </div>
+        </div>
+        <div class="stage-footer"><p id="stageHint">拖曳平面空白處繪製碰撞區；點選或拖曳既有區域可選取、移動，並可用數值欄位調整。</p><p id="walkMessage" role="status" aria-live="polite"></p></div>
+      </section>
+    </div>
+    <footer class="walk-footer"><span><i></i> 模型、場景校正與碰撞資料保存在目前瀏覽器</span><a href="./workspace.html#walk">查看固定示範場景</a></footer>
+  </main>
+
+  <script type="module" src="modules/personal-walk.mjs"></script>
+</body>
+</html>

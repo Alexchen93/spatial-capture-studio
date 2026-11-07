@@ -8,3 +8,16 @@
 .gpu-diagnostics{border:1px solid #435747;background:#1b2920;padding:10px;margin:10px 0;color:#c7d8c3;font-size:11px}.gpu-diagnostics summary{cursor:pointer;font-weight:600}.gpu-diagnostics p{font-size:10px;color:#9aada0;line-height:1.7}.gpu-diagnostics pre{white-space:pre-wrap;overflow-wrap:anywhere;font:10px/1.6 monospace;color:#d5e5ce;user-select:text}.gpu-diagnostics button{background:#2c3d2f;border:1px solid #516b54;color:#dcebd8;padding:8px 10px;font-size:10px}.gpu-diagnostics span{font-size:10px;color:#c7d8c3;margin-left:6px}
 
 .low-load-option{display:flex;align-items:flex-start;gap:10px;margin:12px 0;padding:11px;border:1px solid #405045;background:#1b2920;cursor:pointer}.low-load-option input{accent-color:#d6eea0;margin-top:3px;flex:none}.low-load-option strong{display:block;color:#dce9d5;font-size:11px}.low-load-option small{display:block;color:#99aa9c;font-size:10px;line-height:1.6;margin-top:4px}
+
+.training-actions{display:flex;flex-wrap:wrap;align-items:center}
+.training-save-personal:not([hidden]),.training-open-personal:not([hidden]){display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:8px 13px;border:1px solid #718c67;background:#2c3d2f;color:#e2eddd;text-decoration:none;font:inherit;font-size:12px;line-height:1.4}
+.training-save-personal:hover:not(:disabled),.training-open-personal:hover{background:#3a4d3c;color:#f0f6e9}
+.training-save-personal:focus-visible,.training-open-personal:focus-visible,.personal-walk-cta:focus-visible{outline:3px solid var(--lime);outline-offset:2px}
+.training-open-personal:not([hidden]){border-color:#667650;background:#d6eea0;color:#18241a;font-weight:700}
+.training-open-personal:hover{background:#e3f4b9;color:#18241a}
+.walk-intro-actions{display:grid;justify-items:stretch;gap:7px;min-width:min(245px,100%)}
+.walk-intro-actions small{color:#9bab9d;font-size:11px;line-height:1.5}
+.personal-walk-cta{min-height:46px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 13px;border:1px solid #7b966d;background:#d6eea0;color:#18241a;text-decoration:none;font-size:12px;font-weight:700}
+.personal-walk-cta:hover{background:#e3f4b9}
+.personal-walk-cta span{font-size:18px}
+@media(max-width:760px){.walk-intro-actions{margin-top:14px;min-width:0}.walk-intro-actions .back-button{width:100%}.training-actions>*{flex:1 1 155px}}

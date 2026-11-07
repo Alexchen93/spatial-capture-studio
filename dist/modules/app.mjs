@@ -1,12 +1,20 @@
 import './viewer.mjs';
 import { setupLocalReconstruction } from './reconstruction.mjs';
-import {openStore,listPhotos,putPhoto,deletePhoto,clearPhotos} from './captures.mjs';
+import {openStore,listPhotos,putPhoto,deletePhoto,clearPhotos,putProject} from './captures.mjs';
 import {createZip} from './zip.mjs';
 import {extractVideoFrames} from './video-frames.mjs';
 const $=s=>document.querySelector(s),photosEl=$('#photos'),count=$('#photoCount'),clear=$('#clearPhotos'),download=$('#downloadPhotos'),note=$('#storageNote'),video=$('#video'),panel=$('#cameraPanel');
 let db=null,photos=[],stream=null,urls=[],toastTimer,busy=false,videoAbort=null;
 function toast(message){const el=$('#toast');el.textContent=message;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),4000)}
-const reconstruction=setupLocalReconstruction(()=>photos);
+const reconstruction=setupLocalReconstruction(()=>photos,{
+  onSavePersonalScene:async({ply,cameras})=>{
+    if(!db)db=await openStore();
+    const now=Date.now(),id=crypto.randomUUID();
+    const project={id,name:`個人場景 ${new Date(now).toLocaleDateString('zh-TW')}`,created:now,updated:now,ply,cameras,version:1};
+    await putProject(db,project);
+    return{id};
+  },
+});
 function draw(){reconstruction.refresh();urls.forEach(URL.revokeObjectURL);urls=[];count.textContent=photos.length;clear.hidden=!photos.length;download.disabled=!photos.length;photosEl.replaceChildren();if(!photos.length){photosEl.innerHTML='<div class="photo-empty"><span>▧</span><p>尚未加入畫面<br><small>錄影擷取，或補充 JPG、PNG、WebP</small></p></div>';return}for(const [i,item] of photos.entries()){const div=document.createElement('div');div.className='photo-item';const img=document.createElement('img');let url=URL.createObjectURL(item.blob);urls.push(url);img.src=url;img.alt=`照片 ${i+1}`;const button=document.createElement('button');button.type='button';button.textContent='×';button.setAttribute('aria-label',`移除照片 ${i+1}`);button.onclick=async()=>{try{if(db)await deletePhoto(db,item.id);photos=photos.filter(p=>p.id!==item.id);draw()}catch{toast('無法刪除照片，請重試。')}};div.append(img,button);photosEl.append(div)}}
 async function addFiles(files){if(busy)return;busy=true;let added=0,invalid=0;const timestamp=Date.now();try{for(const file of files){if(photos.length>=100||!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>10*1024*1024||photos.reduce((n,p)=>n+p.blob.size,0)+file.size>120*1024*1024){invalid++;continue}try{const bitmap=await createImageBitmap(file);bitmap.close();const item={id:crypto.randomUUID(),blob:file,type:file.type,created:timestamp+added/1000};if(db)await putPhoto(db,item);photos.push(item);added++}catch{invalid++}}draw();toast(`已加入 ${added} 張照片${invalid?`；${invalid} 張無法加入（請確認格式、大小或儲存空間）`:''}。`)}finally{busy=false}}
 try{db=await openStore();photos=await listPhotos(db);photos.sort((a,b)=>a.created-b.created);draw()}catch{note.textContent='瀏覽器無法儲存，照片只保留至關閉頁面';toast('無法使用瀏覽器儲存空間，本次照片僅暫存於頁面。')}
