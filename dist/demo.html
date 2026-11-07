@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101715">
+  <meta name="robots" content="noindex,nofollow">
+  <title>專案導覽 — Spatial Capture</title>
+  <meta name="description" content="快速了解 Spatial Capture 從影像記錄、裝置端重建到滿版空間視察的操作流程。">
+  <link rel="stylesheet" href="demo.css">
+</head>
+<body>
+  <header class="demo-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">⌬</span><span>SPATIAL <b>/ CAPTURE</b></span></div>
+    <span class="route-label">PROJECT WALKTHROUGH <span>／</span> DEMO</span>
+  </header>
+
+  <main>
+    <section class="intro" aria-labelledby="introTitle">
+      <div class="intro-copy">
+        <div class="eyebrow"><span class="dot" aria-hidden="true"></span> PROJECT IN 60 SECONDS</div>
+        <h1 id="introTitle">從一段影像，<br><em>走進一個空間。</em></h1>
+        <p>Spatial Capture 讓你在自己的裝置上記錄、嘗試重建並視察空間。先看懂整個流程，再選擇從哪一步開始。</p>
+        <div class="intro-actions">
+          <a class="button button-primary" href="./workspace.html#capture">開始操作 <span aria-hidden="true">↗</span></a>
+          <a class="button button-outline" href="./workspace.html#walk">先看固定示範 <span aria-hidden="true">→</span></a>
+        </div>
+      </div>
+      <div class="intro-visual" aria-hidden="true">
+        <div class="visual-heading"><span>IMAGE INPUT</span><span>SPACE OUTPUT</span></div>
+        <div class="visual-diagram"><div class="frame frame-back"></div><div class="frame frame-front"><span class="frame-sun"></span><span class="frame-floor"></span></div><div class="visual-path"></div><div class="visual-cube"><i></i><i></i><i></i></div></div>
+        <div class="visual-foot"><span>01 / CAPTURE</span><span>05 / EXPLORE</span></div>
+      </div>
+    </section>
+
+    <section class="flow-section" aria-labelledby="flowTitle">
+      <div class="section-head"><div><span class="eyebrow">HOW IT WORKS</span><h2 id="flowTitle">五步驟，看懂整個專案。</h2></div><p>影像 → 視覺模型 → 人工校正 → 滿版視察</p></div>
+      <ol class="flow" aria-label="個人場景建立流程">
+        <li class="flow-step"><span class="step-number">01</span><span class="step-kind">INPUT</span><h3>記錄空間</h3><p>用手機錄影，或補充不同角度的照片。</p><span class="step-output">產出：影像素材</span></li>
+        <li class="flow-step"><span class="step-number">02</span><span class="step-kind">LOCAL</span><h3>擷取畫面</h3><p>影片在瀏覽器內取樣；擷取畫面存於目前裝置。</p><span class="step-output">產出：可用畫面</span></li>
+        <li class="flow-step"><span class="step-number">03</span><span class="step-kind">EXPERIMENT</span><h3>嘗試本機重建</h3><p>支援 WebGPU 時，以畫面訓練並匯出視覺 PLY。</p><span class="step-output">產出：視覺模型</span></li>
+        <li class="flow-step"><span class="step-number">04</span><span class="step-kind">MANUAL</span><h3>校正可走範圍</h3><p>手動設定尺度、地板、起點及矩形碰撞區。</p><span class="step-output">產出：個人場景設定</span></li>
+        <li class="flow-step"><span class="step-number">05</span><span class="step-kind">EXPLORE</span><h3>滿版視察</h3><p>第一人稱走進場景；需要調整時進入編輯模式。</p><span class="step-output">體驗：自由步行</span></li>
+      </ol>
+    </section>
+
+    <section class="paths" aria-labelledby="pathsTitle">
+      <div class="paths-heading"><span class="eyebrow">CHOOSE A PATH</span><h2 id="pathsTitle">現在，你想從哪裡開始？</h2></div>
+      <div class="path-grid">
+        <article class="path-card"><span class="path-index">A / COMPLETE FLOW</span><h3>建立自己的場景</h3><p>從錄影或照片開始，依序擷取、重建、校正，再進入滿版視察。</p><a href="./workspace.html#capture">前往工作區 <span aria-hidden="true">↗</span></a></article>
+        <article class="path-card"><span class="path-index">B / EXISTING MODEL</span><h3>已有視覺 PLY</h3><p>匯入相容的 Gaussian PLY，先校正尺度與碰撞區，儲存後直接視察。</p><a href="./personal-walk.html">開啟個人場景 <span aria-hidden="true">↗</span></a></article>
+        <article class="path-card path-card-demo"><span class="path-index">C / QUICK PREVIEW</span><h3>先體驗固定示範</h3><p>立即試走預先製作的示範空間；它不是你的照片重建結果。</p><a href="./workspace.html#walk">進入示範空間 <span aria-hidden="true">↗</span></a></article>
+      </div>
+      <p class="truth-note"><strong>目前階段</strong> 本機 WebGPU 重建仍屬實驗；視覺模型不會自動產生可信的牆面或家具碰撞。真實手機上的重建品質與相容性仍需實機驗證。</p>
+    </section>
+  </main>
+  <footer><span>SPATIAL / CAPTURE</span><span>記錄 · 重建 · 校正 · 視察</span></footer>
+</body>
+</html>
