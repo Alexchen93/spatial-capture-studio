@@ -5,18 +5,18 @@ const add=(a,b)=>a.map((v,i)=>v+b[i]);
 const scale=(a,s)=>a.map(v=>v*s);
 const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
 const normalize=v=>{const n=Math.hypot(...v);return n>EPS?v.map(x=>x/n):null};
-const mean=values=>values.length?values[0].map((_,i)=>values.reduce((n,v)=>n+v[i],0)/values.length):[0,0,0];
 
 export function cameraCenter(camera){const{R,t}=camera;return[-(R[0]*t[0]+R[3]*t[1]+R[6]*t[2]),-(R[1]*t[0]+R[4]*t[1]+R[7]*t[2]),-(R[2]*t[0]+R[5]*t[1]+R[8]*t[2])]}
 function fallbackForward(up){const candidates=[[0,0,-1],[0,0,1],[1,0,0]];for(const candidate of candidates){const projected=sub(candidate,scale(up,dot(candidate,up)));const n=normalize(projected);if(n)return n}return[0,0,-1]}
 function projectPoint(point,origin,up){const r=sub(point,origin);return dot(r,up)}
 
 export function makeDefaultCalibration(cameras=[],modelData=null){
-  const centers=cameras.map(cameraCenter).filter(v=>v.every(Number.isFinite));const origin=mean(centers);
+  const first=[...cameras].sort((a,b)=>(Number.isFinite(a.imgIdx)?a.imgIdx:Infinity)-(Number.isFinite(b.imgIdx)?b.imgIdx:Infinity))[0];
+  const origin=first&&cameraCenter(first).every(Number.isFinite)?cameraCenter(first):[0,0,0];
   const cameraUps=cameras.map(c=>normalize([-c.R[3],-c.R[4],-c.R[5]])).filter(Boolean);
   let up=normalize(cameraUps.length?cameraUps.reduce((s,v)=>add(s,v),[0,0,0]):[0,1,0])||[0,1,0];
   let forward=null;
-  for(const camera of cameras){const dir=normalize([camera.R[6],camera.R[7],camera.R[8]]);if(!dir)continue;forward=normalize(sub(dir,scale(up,dot(dir,up))));if(forward)break}
+  for(const camera of [first,...cameras].filter(Boolean)){const dir=normalize([camera.R[6],camera.R[7],camera.R[8]]);if(!dir)continue;forward=normalize(sub(dir,scale(up,dot(dir,up))));if(forward)break}
   forward??=fallbackForward(up);let right=normalize(cross(forward,up))||[1,0,0];forward=normalize(cross(up,right))||fallbackForward(up);
   const calibration={origin,up,forward,unitsPerMeter:1,headingDeg:0,floorHeight:0};
   if(modelData?.length>=16){const heights=[];const stride=modelData.length%16===0?16:1;const step=Math.max(1,Math.ceil((modelData.length/stride)/30000));for(let i=0;i<modelData.length/stride;i+=step){const at=i*stride;const p=[modelData[at],modelData[at+1],modelData[at+2]];if(p.every(Number.isFinite))heights.push(projectPoint(p,origin,up))}heights.sort((a,b)=>a-b);if(heights.length)calibration.floorHeight=heights[Math.floor((heights.length-1)*.05)]}

@@ -20,4 +20,9 @@
 .personal-walk-cta{min-height:46px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 13px;border:1px solid #7b966d;background:#d6eea0;color:#18241a;text-decoration:none;font-size:12px;font-weight:700}
 .personal-walk-cta:hover{background:#e3f4b9}
 .personal-walk-cta span{font-size:18px}
+.photo-actions #liveCaptureBtn{grid-column:1/-1;border-color:#a4c78a;color:#e6f2d9}
+.live-training-slot{margin-top:14px;padding:14px;border:1px solid #5a7656;background:#1d3023}
+.live-training-slot>p{font-size:11px;line-height:1.7;color:#d4e6cf;margin:0 0 10px}
+.live-training-slot .training-open-personal{width:100%;margin-top:10px}
+.camera-panel video{max-height:55dvh;object-fit:contain}
 @media(max-width:760px){.walk-intro-actions{margin-top:14px;min-width:0}.walk-intro-actions .back-button{width:100%}.training-actions>*{flex:1 1 155px}}
