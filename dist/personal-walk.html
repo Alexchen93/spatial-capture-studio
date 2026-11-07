@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#101715">
-  <title>個人場景校正 — Spatial Capture</title>
-  <meta name="description" content="在本機校正重建場景的尺度、地板與人工碰撞區，並嘗試自由步行。">
+  <title>個人場景視察 — Spatial Capture</title>
+  <meta name="description" content="滿版視察個人重建場景；需要時切換編輯模式，校正尺度、地板與人工碰撞區。">
   <link rel="stylesheet" href="personal-walk.css">
 </head>
 <body class="walk-body">
@@ -17,7 +17,7 @@
   <main class="walk-shell">
     <section class="walk-heading">
       <div class="eyebrow">PERSONAL SCENE / CALIBRATION</div>
-      <h1>校正你的可步行場景。</h1>
+      <h1>建立你的可步行場景。</h1>
       <p>視覺模型用來呈現空間；請依照俯視點雲手動校正尺度、地板、範圍與障礙物。碰撞區不會從 PLY 自動推算。</p>
     </section>
 
@@ -90,8 +90,8 @@
         </section>
 
         <section class="editor-actions">
-          <button type="button" id="saveScene" class="primary-button" disabled>儲存校正</button>
-          <button type="button" id="startWalk" class="secondary-button" disabled>開始個人場景步行</button>
+          <button type="button" id="saveScene" class="primary-button" disabled>儲存並進入視察</button>
+          <button type="button" id="startWalk" class="secondary-button" disabled>進入滿版視察</button>
           <p class="helper">步行預覽需要支援 WebGPU 的瀏覽器；所有操作和場景資料都在本機。</p>
         </section>
       </aside>
@@ -99,7 +99,6 @@
       <section class="walk-stage" aria-label="場景平面編輯與步行預覽">
         <div class="stage-toolbar">
           <div><span class="eyebrow">SCENE VIEW</span><strong id="stageTitle">俯視校正平面</strong></div>
-          <button type="button" id="returnToPlan" class="quiet-button" hidden>返回校正</button>
         </div>
         <div id="planStage" class="plan-stage">
           <canvas id="planCanvas" aria-label="場景俯視平面，拖曳空白處建立矩形碰撞區；拖曳現有碰撞區可移動"></canvas>
@@ -108,12 +107,9 @@
         </div>
         <div id="renderStage" class="render-stage" hidden>
           <canvas id="renderCanvas" tabindex="0" aria-label="個人重建的第一人稱步行視角；使用 W A S D 或方向控制移動，拖曳視角"></canvas>
-          <div class="render-hud"><span id="walkStatus">步行中</span><span>拖曳看方向 · WASD 移動</span></div>
+          <button type="button" id="returnToPlan" class="quiet-button edit-mode-button" hidden>編輯模式</button>
           <div class="render-reticle" aria-hidden="true"></div>
-          <div class="touch-pad" aria-label="觸控步行控制">
-            <button type="button" data-move="forward" aria-label="向前移動">↑</button>
-            <div><button type="button" data-move="left" aria-label="向左移動">←</button><button type="button" data-move="back" aria-label="向後移動">↓</button><button type="button" data-move="right" aria-label="向右移動">→</button></div>
-          </div>
+          <div class="touch-pad"><button type="button" id="moveStick" aria-label="拖曳移動方向" title="拖曳移動方向"></button></div>
         </div>
         <div class="stage-footer"><p id="stageHint">拖曳平面空白處繪製碰撞區；點選或拖曳既有區域可選取、移動，並可用數值欄位調整。</p><p id="walkMessage" role="status" aria-live="polite"></p></div>
       </section>

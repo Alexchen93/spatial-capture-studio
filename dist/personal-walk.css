@@ -69,19 +69,26 @@ button:disabled{opacity:.48;cursor:not-allowed}
 .legend-points{background:#c7e995}.legend-cameras{background:#67b8d2}.legend-obstacles{background:#e2a078!important;border-radius:2px!important}.legend-start{background:#e8dc85}
 .render-stage{height:min(76vh,820px);min-height:440px;touch-action:none}
 .render-stage canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}
-.render-hud{position:absolute;left:12px;right:12px;top:12px;display:flex;justify-content:space-between;gap:12px;color:#edf1e8;text-shadow:0 1px 4px #000;font-size:13px;pointer-events:none}
-.render-hud span{padding:8px 10px;background:rgba(16,23,21,.76);border:1px solid rgba(190,210,190,.24)}
+.edit-mode-button{position:absolute;z-index:2;right:calc(16px + env(safe-area-inset-right));top:calc(16px + env(safe-area-inset-top));border-color:rgba(219,237,212,.55);background:rgba(16,23,21,.78);backdrop-filter:blur(8px)}
+.edit-mode-button:focus-visible{outline:2px solid var(--lime);outline-offset:3px}
 .render-reticle{position:absolute;left:50%;top:50%;width:9px;height:9px;border:1px solid rgba(245,250,235,.8);border-radius:50%;transform:translate(-50%,-50%);pointer-events:none}
-.touch-pad{position:absolute;bottom:calc(18px + env(safe-area-inset-bottom));left:18px;display:grid;justify-items:center;gap:6px;touch-action:none}
-.touch-pad>div{display:flex;gap:6px}
-.touch-pad button{width:52px;height:52px;border:1px solid rgba(219,237,212,.64);background:rgba(25,38,29,.82);color:#edf1e8;font-size:22px;touch-action:none;user-select:none;-webkit-user-select:none}
-.touch-pad button:active{background:#516b54}
+.touch-pad{position:absolute;bottom:calc(18px + env(safe-area-inset-bottom));left:calc(18px + env(safe-area-inset-left));touch-action:none}
+.touch-pad button{--stick-x:0px;--stick-y:0px;width:100px;height:100px;border:1px solid rgba(219,237,212,.55);border-radius:50%;background:rgba(25,38,29,.55);touch-action:none;user-select:none;-webkit-user-select:none;position:relative}
+.touch-pad button::after{content:"";position:absolute;left:50%;top:50%;width:38px;height:38px;border-radius:50%;background:rgba(214,238,160,.72);transform:translate(calc(-50% + var(--stick-x)),calc(-50% + var(--stick-y)));pointer-events:none}
+.touch-pad button:active{background:rgba(25,38,29,.8)}
 .stage-footer{padding:12px 16px;border-top:1px solid #354239;min-height:62px}
 .stage-footer p{font-size:14px;line-height:1.6;color:#aebcaf;margin:0}
 .stage-footer p+p{margin-top:5px;color:#dce9d5}
 .walk-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px;color:#a4b2a6;font-size:13px}
 .walk-footer span{line-height:1.6}
 .walk-footer i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--lime);margin-right:7px}
+.is-walking{height:100dvh;overflow:hidden;padding:0}
+.is-walking .walk-header,.is-walking .walk-heading,.is-walking .page-status,.is-walking .scene-editor,.is-walking .stage-toolbar,.is-walking .stage-footer,.is-walking .walk-footer{display:none!important}
+.is-walking .walk-shell{width:100%;max-width:none;height:100dvh;margin:0;padding:0}
+.is-walking .walk-layout{display:block;width:100%;height:100%}
+.is-walking .walk-stage{width:100%;height:100%;border:0}
+.is-walking .render-stage{width:100%;height:100%;min-height:0}
+.is-walking .touch-pad{display:none}
 [hidden]{display:none!important}
 
 @media(max-width:1000px){.walk-layout{grid-template-columns:minmax(300px,360px) minmax(0,1fr);gap:12px}.scene-editor{padding-right:14px;padding-left:14px}.walk-heading{align-items:start;flex-direction:column;gap:10px}}
@@ -104,5 +111,6 @@ button:disabled{opacity:.48;cursor:not-allowed}
   .field-grid{gap:0 8px}
   .picker-row select,.scene-editor input:not([type="file"]),.scene-editor select{min-height:48px}
 }
-@media(max-width:380px){.walk-header nav a{font-size:12px}.brand{font-size:11px}.field-grid.three-cols{grid-template-columns:repeat(3,minmax(0,1fr))}.touch-pad button{width:48px;height:48px}}
+@media(pointer:coarse){.is-walking .touch-pad{display:grid}}
+@media(max-width:380px){.walk-header nav a{font-size:12px}.brand{font-size:11px}.field-grid.three-cols{grid-template-columns:repeat(3,minmax(0,1fr))}.touch-pad button{width:88px;height:88px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}

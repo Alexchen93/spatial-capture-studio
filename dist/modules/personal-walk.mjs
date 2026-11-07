@@ -13,6 +13,13 @@ const NUM_FIELDS={
 let db=null,projects=[],currentProject=null,model=null,scene=null,selectedObstacle=null,mapState=null,resizeObserver=null;
 let gpuReady=false,gpuChecked=false,loading=false,walkSession=null,walking=false,walkFrame=0,lastWalkFrame=0,player={x:0,z:0},yaw=0,pitch=0,drag=null;
 const held=new Set();
+function requestImmersiveFullscreen(){
+  if(document.fullscreenElement||(navigator.userActivation&&!navigator.userActivation.isActive)||!document.documentElement.requestFullscreen)return;
+  document.documentElement.requestFullscreen().catch(()=>{});
+}
+function leaveImmersiveFullscreen(){
+  if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});
+}
 
 function message(text,kind='info'){PAGE_STATUS.textContent=text;PAGE_STATUS.dataset.kind=kind}
 function projectMessage(text,kind='info'){
@@ -58,6 +65,7 @@ function defaultScene(record,parsed){
 
 function updateButtons(){
   const loaded=Boolean(model&&scene&&currentProject);
+  $('saveScene').textContent=gpuReady?'儲存並進入視察':'儲存校正';
   $('saveScene').disabled=!loaded||loading;
   $('startWalk').disabled=!loaded||!gpuReady||loading;
   $('fitBounds').disabled=!loaded||loading;
@@ -82,7 +90,7 @@ async function refreshProjects(preferredId=currentProject?.id){
 }
 
 function disposeView(){
-  if(walkFrame)cancelAnimationFrame(walkFrame);walkFrame=0;walking=false;held.clear();
+  if(walkFrame)cancelAnimationFrame(walkFrame);walkFrame=0;walking=false;held.clear();releaseStick();
   try{walkSession?.pause();walkSession?.dispose()}catch{}
   walkSession=null;
 }
@@ -99,9 +107,10 @@ async function acceptProject(record,{imported=false}={}){
     $('modelSummary').textContent=`${parsed.n.toLocaleString('zh-TW')} 個 Gaussian · ${(record.ply.size/1024/1024).toFixed(1)} MB`;
     $('planEmpty').hidden=true;
     renderFields();renderObstacles();renderPlan();
-    if(imported){PROJECT_PICKER.value='';projectMessage(`已載入「${record.name}」；校正尚未儲存，按「儲存校正」即可保留在此瀏覽器。`,'warning')}
-    else projectMessage(`已載入「${record.name||'未命名場景'}」。請用點雲、已知尺寸和現場測量手動校正。`);
+    if(imported){PROJECT_PICKER.value='';projectMessage(`已載入「${record.name}」；校正尚未儲存，按「${gpuReady?'儲存並進入視察':'儲存校正'}」即可保留在此瀏覽器。`,'warning')}
+    else projectMessage(gpuReady?`已載入「${record.name||'未命名場景'}」，正在進入滿版視察；需要調整時可開啟編輯模式。`:`已載入「${record.name||'未命名場景'}」。請用點雲、已知尺寸和現場測量手動校正。`);
   }finally{loading=false;updateButtons()}
+  if(!imported&&gpuReady)await startWalk();
 }
 
 function renderFields(){
@@ -269,6 +278,7 @@ async function startWalk(){
   if(loading||!scene||!model||!gpuReady)return;
   try{validateWalkScene(scene);player=findSafeStart(scene,CHARACTER_RADIUS)}
   catch(error){message(error.message,'error');return}
+  requestImmersiveFullscreen();
   if(player.x!==scene.start.x||player.z!==scene.start.z){scene.start={...player};renderFields();message('原起點落在障礙物或範圍外，已移至最近可站立位置。儲存前可再調整。','warning')}
   loading=true;updateButtons();message('正在準備本機 WebGPU 步行預覽；請保持頁面開啟。');
   try{
@@ -276,23 +286,25 @@ async function startWalk(){
     $('planStage').hidden=true;$('renderStage').hidden=false;$('returnToPlan').hidden=false;$('stageTitle').textContent='個人場景第一人稱視角';document.body.classList.add('is-walking');
     walking=true;yaw=0;pitch=0;lastWalkFrame=0;await new Promise(resolve=>requestAnimationFrame(resolve));resizeRenderCanvas();
     if(!walkSession.view.canvas)walkSession.view.attach(RENDER_CANVAS);
-    updateViewCamera();walkSession.view.renderNow();RENDER_CANVAS.focus({preventScroll:true});walkFrame=requestAnimationFrame(tickWalk);walkMessage('使用 WASD／方向鍵或觸控方向鍵移動；拖曳模型畫面調整視角。');message('個人場景步行中。碰撞僅包含你設定的矩形區與步行範圍邊界。');
-  }catch(error){walking=false;$('renderStage').hidden=true;$('planStage').hidden=false;$('returnToPlan').hidden=true;document.body.classList.remove('is-walking');message(`無法啟動步行預覽：${error.message||error}`,'error');try{walkSession?.dispose()}catch{}walkSession=null}
+    updateViewCamera();walkSession.view.renderNow();RENDER_CANVAS.focus({preventScroll:true});walkFrame=requestAnimationFrame(tickWalk);walkMessage('');message('個人場景步行中。碰撞僅包含你設定的矩形區與步行範圍邊界。');
+  }catch(error){walking=false;$('renderStage').hidden=true;$('planStage').hidden=false;$('returnToPlan').hidden=true;document.body.classList.remove('is-walking');leaveImmersiveFullscreen();message(`無法啟動步行預覽：${error.message||error}`,'error');try{walkSession?.dispose()}catch{}walkSession=null}
   finally{loading=false;updateButtons()}
 }
 
 function stopWalk(){
-  if(!walking)return;walking=false;if(walkFrame)cancelAnimationFrame(walkFrame);walkFrame=0;held.clear();scene.start={...player};renderFields();
-  $('renderStage').hidden=true;$('planStage').hidden=false;$('returnToPlan').hidden=true;$('stageTitle').textContent='俯視校正平面';document.body.classList.remove('is-walking');renderPlan();walkMessage('目前位置已設為新的步行起點；按「儲存校正」保留變更。');message('已返回校正平面。');
+  if(!walking)return;walking=false;if(walkFrame)cancelAnimationFrame(walkFrame);walkFrame=0;held.clear();releaseStick();scene.start={...player};renderFields();
+  $('renderStage').hidden=true;$('planStage').hidden=false;$('returnToPlan').hidden=true;$('stageTitle').textContent='俯視校正平面';document.body.classList.remove('is-walking');leaveImmersiveFullscreen();renderPlan();walkMessage('目前位置已設為新的步行起點；按「儲存並進入視察」保留變更。');message('已進入編輯模式；儲存後會返回滿版視察。');
 }
 
 async function saveScene(){
   if(!currentProject||!model||!scene)return;loading=true;updateButtons();message('正在將 PLY 和場景校正寫入此瀏覽器…');
+  let saved=false;
   try{
-    validateWalkScene(scene);if(!db)db=await openStore();const name=$('projectName').value.trim().slice(0,80)||'未命名場景';
-    const updated={...currentProject,name,scene:clone(scene),updated:Date.now(),version:1};await putProject(db,updated);currentProject=updated;await refreshProjects(updated.id);message(`已儲存「${name}」；PLY、尺度、地板、範圍和人工碰撞區都留在此瀏覽器。`)
-  }catch(error){message(`儲存失敗：${error.message||error}`,'error')}
+    validateWalkScene(scene);if(gpuReady)requestImmersiveFullscreen();if(!db)db=await openStore();const name=$('projectName').value.trim().slice(0,80)||'未命名場景';
+    const updated={...currentProject,name,scene:clone(scene),updated:Date.now(),version:1};await putProject(db,updated);currentProject=updated;saved=true;await refreshProjects(updated.id);message(`已儲存「${name}」；PLY、尺度、地板、範圍和人工碰撞區都留在此瀏覽器。`)
+  }catch(error){leaveImmersiveFullscreen();message(`儲存失敗：${error.message||error}`,'error')}
   finally{loading=false;updateButtons()}
+  if(saved&&gpuReady)await startWalk();
 }
 
 async function removeProject(){
@@ -322,12 +334,23 @@ $('refreshProjects').addEventListener('click',()=>refreshProjects());
 $('plyFile').addEventListener('change',async event=>{await importPly(event.target.files?.[0]);event.target.value=''});
 PROJECT_PICKER.addEventListener('change',async()=>{const id=PROJECT_PICKER.value;if(!id)return;try{const record=await getProject(db,id);await acceptProject(record)}catch(error){message(`無法載入場景：${error.message||error}`,'error')}});
 
-for(const button of document.querySelectorAll('[data-move]')){
-  const direction=button.dataset.move;
-  button.addEventListener('pointerdown',event=>{event.preventDefault();button.setPointerCapture(event.pointerId);held.add(direction);button.classList.add('pressed')});
-  const release=()=>{held.delete(direction);button.classList.remove('pressed')};
-  button.addEventListener('pointerup',release);button.addEventListener('pointercancel',release);button.addEventListener('lostpointercapture',release);
+const MOVE_STICK=$('moveStick'),STICK_DIRECTIONS=['forward','back','left','right'];
+let stickPointer=null;
+function moveStick(event){
+  const rect=MOVE_STICK.getBoundingClientRect(),radius=rect.width*.35;
+  const x=Math.max(-1,Math.min(1,(event.clientX-rect.left-rect.width/2)/radius));
+  const y=Math.max(-1,Math.min(1,(event.clientY-rect.top-rect.height/2)/radius));
+  MOVE_STICK.style.setProperty('--stick-x',`${x*radius}px`);MOVE_STICK.style.setProperty('--stick-y',`${y*radius}px`);
+  for(const direction of STICK_DIRECTIONS)held.delete(direction);
+  if(y<-.28)held.add('forward');else if(y>.28)held.add('back');
+  if(x<-.28)held.add('left');else if(x>.28)held.add('right');
 }
+function releaseStick(){stickPointer=null;for(const direction of STICK_DIRECTIONS)held.delete(direction);MOVE_STICK.style.setProperty('--stick-x','0px');MOVE_STICK.style.setProperty('--stick-y','0px')}
+MOVE_STICK.addEventListener('pointerdown',event=>{if(!walking)return;event.preventDefault();stickPointer=event.pointerId;MOVE_STICK.setPointerCapture(event.pointerId);moveStick(event)});
+MOVE_STICK.addEventListener('pointermove',event=>{if(stickPointer===event.pointerId)moveStick(event)});
+MOVE_STICK.addEventListener('pointerup',releaseStick);
+MOVE_STICK.addEventListener('pointercancel',releaseStick);
+MOVE_STICK.addEventListener('lostpointercapture',releaseStick);
 
 RENDER_CANVAS.addEventListener('pointerdown',event=>{if(!walking)return;event.preventDefault();drag={pointerId:event.pointerId,x:event.clientX,y:event.clientY};RENDER_CANVAS.setPointerCapture(event.pointerId)});
 RENDER_CANVAS.addEventListener('pointermove',event=>{if(!walking||!drag||drag.pointerId!==event.pointerId)return;const dx=event.clientX-drag.x,dy=event.clientY-drag.y;drag.x=event.clientX;drag.y=event.clientY;yaw+=dx*.004;pitch=Math.max(-1.15,Math.min(1.15,pitch-dy*.004));updateViewCamera()});
@@ -351,6 +374,7 @@ async function initialize(){
   catch{gpuChecked=true;gpuReady=false}
   updateButtons();
   if(!gpuReady){if(currentProject)projectMessage(`已載入「${currentProject.name||'未命名場景'}」。請用點雲、已知尺寸和現場測量手動校正。`);else message('可載入 PLY、編輯並儲存校正；此瀏覽器未啟用 WebGPU，因此無法顯示第一人稱 GPU 預覽。','warning')}
+  else if(!projects.length)message('尚無個人場景；載入 PLY 並儲存後即可進入滿版視察。');
   const requested=new URLSearchParams(location.search).get('project');
   if(requested){try{const record=await getProject(db,requested);if(record)await acceptProject(record);else message('找不到連結中的場景；請從清單選擇或載入 PLY。','warning')}catch(error){message(`場景載入失敗：${error.message||error}`,'error')}}
   else if(projects.length){try{await acceptProject(projects[0])}catch(error){message(`最近場景載入失敗：${error.message||error}。可重新選擇或載入 PLY。`,'warning')}}
