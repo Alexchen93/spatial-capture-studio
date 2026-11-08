@@ -80,3 +80,35 @@ test('live reconstruction uses only newly captured frames and refreshes after ei
     assert.equal(saved.length,2);assert.equal(sessions.length,2);
   }finally{globalThis.document=oldDocument;globalThis.window=oldWindow;if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else delete globalThis.navigator}
 });
+
+test('insufficient overlapping views keep live capture available and retry after eight new frames',async()=>{
+  const ids=['reconstructBtn','trainingPanel','trainingStage','trainingProgress','trainingBar','trainingNote','trainingPreview','pauseTraining','finishTraining','cancelTraining','exportTraining','deviceStatus','reconstructDetail','errorInfo','errorDetail','trainingHealth','personalPreviewCaption','previewViews','previewBack','previewNext','previewCount','savePersonalScene','openPersonalWalk'];
+  const elements=Object.fromEntries(ids.map(id=>[id,element()]));
+  const oldDocument=globalThis.document,oldWindow=globalThis.window,oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
+  globalThis.document={getElementById:id=>elements[id]};globalThis.window={addEventListener(){}};
+  Object.defineProperty(globalThis,'navigator',{value:{gpu:{requestAdapter:async()=>({})}},configurable:true});
+  const photos=[],failures=[],runs=[];
+  class Session{
+    constructor(){this.handlers={};this.view={};runs.push(this)}
+    on(name,handler){this.handlers[name]=handler}
+    async load(){}
+    async solve(){this.handlers.stage({stage:'pass',done:1,total:3});throw new Error('no image pair with enough matches')}
+    pause(){}
+    dispose(){}
+  }
+  const flush=async()=>{for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve))};
+  try{
+    const control=setupLocalReconstruction(()=>photos,{loadEngine:async()=>({createSession:()=>new Session()}),onLiveFailure:(message,error,options)=>failures.push({message,error,options})});
+    await control.ready;control.setLiveMode(true);
+    photos.push(...Array.from({length:8},()=>({blob:new Blob(['image']),type:'image/jpeg'})));
+    control.refresh();await flush();
+    assert.equal(runs.length,1);assert.equal(failures.length,1);
+    assert.equal(failures[0].options.retryable,true);
+    assert.match(failures[0].message,/估計相機位置/);
+    assert.match(failures[0].error.message,/no image pair/);
+    photos.push(...Array.from({length:7},()=>({blob:new Blob(['image']),type:'image/jpeg'})));
+    control.refresh();await flush();assert.equal(runs.length,1);
+    photos.push({blob:new Blob(['image']),type:'image/jpeg'});
+    control.refresh();await flush();assert.equal(runs.length,2);
+  }finally{globalThis.document=oldDocument;globalThis.window=oldWindow;if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else delete globalThis.navigator}
+});

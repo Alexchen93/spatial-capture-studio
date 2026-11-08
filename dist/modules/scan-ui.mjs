@@ -86,7 +86,7 @@ export function setupScanUi(video,preview){
     }
   }
   function saved(id){modelSaved=true;building=false;enter.href=`personal-walk.html?project=${encodeURIComponent(id)}`;enter.hidden=false;modelMessage('已建立 3D 粗模 · 繼續拍攝會更新');updateReadiness()}
-  function failure(message){building=false;modelMessage(modelSaved?'新一批更新失敗 · 上一版 3D 模型仍可用':message);readiness.textContent=modelSaved?'上一版模型已保存 · 可進入第一人稱':'重建未完成 · 照片仍保留';readiness.classList.remove('is-ready');finish.hidden=true}
+  function failure(message,{retryable=false}={}){building=false;modelMessage(modelSaved?`${message} · 上一版模型仍可用`:message);readiness.textContent=retryable?'定位不足 · 繼續補拍後會自動重試':modelSaved?'上一版模型已保存 · 可進入第一人稱':'重建未完成 · 照片刷新後清除';readiness.classList.remove('is-ready');finish.hidden=true}
   function limitReached(){phase.textContent='已達拍攝上限';readiness.textContent='已拍滿 60 張 · 請檢查模型';finish.hidden=true}
   function finished(){phase.textContent='拍攝已完成';readiness.textContent='請查看模型細節；可從拍攝起點進入';status.textContent='已停止相機；3D 模型保存在目前瀏覽器';finish.hidden=true}
   function note(message){status.textContent=message}
