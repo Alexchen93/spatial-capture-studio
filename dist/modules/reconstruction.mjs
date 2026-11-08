@@ -9,7 +9,7 @@ export function trainingHealthMessage(elapsedMs,quietMs,finishing=false){
   if(quietMs>=30000)return `已超過 ${duration(quietMs)} 未收到 GPU 進度回報（開始後 ${duration(elapsedMs)}）。可能仍在運算，也可能卡住；你可以繼續等待或提前結束。`;
   return `開始後 ${duration(elapsedMs)}；顯示的進度是已收到的 GPU 回報。`;
 }
-export function setupLocalReconstruction(getPhotos, {loadEngine=()=>import('../vendor/splat-js/src/session.js'),onSavePersonalScene=async()=>null,onLiveFailure=()=>{}}={}){
+export function setupLocalReconstruction(getPhotos, {loadEngine=()=>import('../vendor/splat-js/src/session.js'),onSavePersonalScene=async()=>null,onLiveFailure=()=>{},onLiveCameras=()=>{}}={}){
   const el=id=>document.getElementById(id), start=el('reconstructBtn'), panel=el('trainingPanel'), stage=el('trainingStage'), progress=el('trainingProgress'), bar=el('trainingBar'), note=el('trainingNote'), health=el('trainingHealth'), canvas=el('trainingPreview'), pause=el('pauseTraining'), finish=el('finishTraining'), cancel=el('cancelTraining'), exportBtn=el('exportTraining'), deviceStatus=el('deviceStatus'), detail=el('reconstructDetail');
   let saveSceneButton=el('savePersonalScene'),openPersonalLink=el('openPersonalWalk'),personalSceneSaved=false;
   if(!saveSceneButton&&typeof document.createElement==='function'){
@@ -18,7 +18,7 @@ export function setupLocalReconstruction(getPhotos, {loadEngine=()=>import('../v
     (exportBtn?.parentElement||panel)?.append(saveSceneButton,openPersonalLink);
   }
   let session=null,abort=null,phase='idle',supported=false,cancelRequested=false,inputBusy=false,wasInterrupted=false,earlyFinish=false,monitor=null,startedAt=0,lastConfirmedAt=0,confirmedIter=0,previewIndex=0,observer=null,lastDiagnostic=null,sourceCount=0,lastEngineLog='',activeProfile='標準';
-  let liveMode=false,liveSaving=false,currentRunLive=false,lastLiveCount=0,liveStartIndex=0,liveScheduled=false,targetIters=MAX_ITERS;
+  let liveMode=false,liveSaving=false,currentRunLive=false,currentRunEpoch=0,liveEpoch=0,lastLiveCount=0,liveStartIndex=0,liveScheduled=false,targetIters=MAX_ITERS;
   const minPhotos=8;
   function refresh(){const count=getPhotos().length,liveCount=count-liveStartIndex;if(el('lowLoadMode'))el('lowLoadMode').disabled=inputBusy||!['idle','done','error'].includes(phase);start.disabled=!supported||inputBusy||count<minPhotos||!['idle','done','error'].includes(phase);if(supported&&phase==='idle'){detail.textContent=inputBusy?'影片畫面擷取完成後即可開始。':count<minPhotos?`目前 ${count} 張畫面，還需要 ${minPhotos-count} 張才能開始。`:`已準備 ${count} 張畫面；可開始本機重建。`}if(liveMode&&supported&&!liveSaving&&!liveScheduled&&['idle','done'].includes(phase)&&liveCount>=Math.max(minPhotos,lastLiveCount+8)){liveScheduled=true;queueMicrotask(()=>{liveScheduled=false;if(liveMode&&!liveSaving&&['idle','done'].includes(phase)&&getPhotos().length-liveStartIndex>=Math.max(minPhotos,lastLiveCount+8))startRun({live:true})})}}
   function setStatus(message,sub){deviceStatus.textContent=message;detail.textContent=sub;}
@@ -44,12 +44,12 @@ export function setupLocalReconstruction(getPhotos, {loadEngine=()=>import('../v
   function fail(message,error){const errorDetail=el('errorDetail');if(errorDetail){errorDetail.textContent=error?`${error.name||'Error'}: ${String(error.message||error).slice(0,300)}`:'';el('errorInfo').hidden=!error}clearSession();phase='error';updateDiagnostics();stage.textContent='本機重建未完成';progress.textContent='';bar.value=0;pause.hidden=true;finish.hidden=true;cancel.hidden=true;exportBtn.hidden=true;if(saveSceneButton)saveSceneButton.hidden=true;if(openPersonalLink)openPersonalLink.hidden=true;note.textContent=message;setStatus('本機重建未完成',message);if(currentRunLive){liveMode=false;onLiveFailure(message)}refresh()}
   async function exportPly(){if(!session||phase!=='done')return;exportBtn.disabled=true;if(saveSceneButton)saveSceneButton.disabled=true;try{note.textContent='正在整理模型，請稍候。';const blob=await session.exportPlyBlob();if(!blob.size)throw new Error('empty');const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='spatial-capture-scene.ply';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);note.textContent='視覺模型已準備下載；此檔案尚不含碰撞模型。'}catch{note.textContent='無法匯出模型；裝置可能已回收 GPU 資源。'}finally{exportBtn.disabled=false;if(saveSceneButton)saveSceneButton.disabled=personalSceneSaved}}
   async function savePersonalScene(){
-    if(!session||phase!=='done'||!saveSceneButton)return false;saveSceneButton.disabled=true;exportBtn.disabled=true;
+    if(!session||phase!=='done'||!saveSceneButton)return false;const runLive=currentRunLive,runEpoch=currentRunEpoch;saveSceneButton.disabled=true;exportBtn.disabled=true;
     try{
       note.textContent='正在整理並儲存視覺模型，請稍候。';const ply=await session.exportPlyBlob();if(!ply.size)throw new Error('empty');
       const cameras=(session.recon?.cams||[]).map(c=>({R:Array.from(c.R||[]),t:Array.from(c.t||[]),f:c.f,fy:c.fy,cx:c.cx,cy:c.cy,w:c.w,h:c.h,imgIdx:c.imgIdx}));
       if(!cameras.length)throw new Error('重建結果沒有可用的相機位置');
-      const saved=await onSavePersonalScene({ply,cameras,live:currentRunLive});if(!saved?.id)throw new Error('無法取得已儲存場景的識別碼');
+      const saved=await onSavePersonalScene({ply,cameras,live:runLive,liveEpoch:runEpoch});if(!saved?.id)throw new Error('無法取得已儲存場景的識別碼');
       if(openPersonalLink){openPersonalLink.href=`personal-walk.html?project=${encodeURIComponent(saved.id)}`;openPersonalLink.hidden=false}
       personalSceneSaved=true;saveSceneButton.textContent='已儲存個人場景';
       note.textContent='已在此瀏覽器儲存個人視覺模型與相機位置；下一步請手動校正尺度、地板和碰撞區。';
@@ -58,7 +58,7 @@ export function setupLocalReconstruction(getPhotos, {loadEngine=()=>import('../v
      finally{saveSceneButton.disabled=personalSceneSaved;exportBtn.disabled=false}
   }
   async function startRun({live=false}={}){
-    if(start.disabled)return;clearSession();phase='loading';cancelRequested=false;earlyFinish=false;personalSceneSaved=false;lastDiagnostic=null;lastEngineLog='';sourceCount=getPhotos().length;currentRunLive=live;targetIters=live?300:MAX_ITERS;if(live)lastLiveCount=sourceCount-liveStartIndex;if(el('gpuDiagnostics'))el('gpuDiagnostics').hidden=true;abort=new AbortController();panel.hidden=false;el('errorInfo').hidden=true;canvas.hidden=true;pause.hidden=true;finish.hidden=true;exportBtn.hidden=true;if(saveSceneButton){saveSceneButton.hidden=true;saveSceneButton.disabled=false;saveSceneButton.textContent='儲存為個人步行場景'}if(openPersonalLink)openPersonalLink.hidden=true;cancel.hidden=false;cancel.disabled=false;cancel.textContent='取消';if(el('personalPreviewCaption'))el('personalPreviewCaption').hidden=true;if(el('previewViews'))el('previewViews').hidden=true;previewIndex=0;bar.value=0;progress.textContent='';note.textContent=live?'正在用目前已拍到的畫面建立粗略場景；可繼續拍攝，新畫面將在下一輪更新。':'重建在這台裝置進行。請保持頁面開啟，手機可能發熱並耗電。';setStatus('本機重建進行中','正在處理畫面，請保持頁面開啟。');refresh();
+    if(start.disabled)return;clearSession();phase='loading';cancelRequested=false;earlyFinish=false;personalSceneSaved=false;lastDiagnostic=null;lastEngineLog='';sourceCount=getPhotos().length;currentRunLive=live;currentRunEpoch=liveEpoch;const runEpoch=currentRunEpoch;targetIters=live?300:MAX_ITERS;if(live)lastLiveCount=sourceCount-liveStartIndex;if(el('gpuDiagnostics'))el('gpuDiagnostics').hidden=true;abort=new AbortController();panel.hidden=false;el('errorInfo').hidden=true;canvas.hidden=true;pause.hidden=true;finish.hidden=true;exportBtn.hidden=true;if(saveSceneButton){saveSceneButton.hidden=true;saveSceneButton.disabled=false;saveSceneButton.textContent='儲存為個人步行場景'}if(openPersonalLink)openPersonalLink.hidden=true;cancel.hidden=false;cancel.disabled=false;cancel.textContent='取消';if(el('personalPreviewCaption'))el('personalPreviewCaption').hidden=true;if(el('previewViews'))el('previewViews').hidden=true;previewIndex=0;bar.value=0;progress.textContent='';note.textContent=live?'正在用目前已拍到的畫面建立粗略場景；可繼續拍攝，新畫面將在下一輪更新。':'重建在這台裝置進行。請保持頁面開啟，手機可能發熱並耗電。';setStatus('本機重建進行中','正在處理畫面，請保持頁面開啟。');refresh();
     const stillRunning=()=>{if(phase==='error')throw new Error('工作已停止');if(cancelRequested)throw new DOMException('cancelled','AbortError')};
     try{
       updateStage('decode',0,live?sourceCount-liveStartIndex:sourceCount);
@@ -78,10 +78,10 @@ export function setupLocalReconstruction(getPhotos, {loadEngine=()=>import('../v
           stage.textContent=earlyFinish?'已提前結束，模型可下載':'視覺重建完成';progress.textContent='';pause.hidden=true;finish.hidden=true;cancel.hidden=true;exportBtn.hidden=false;if(saveSceneButton)saveSceneButton.hidden=false;
           note.textContent=earlyFinish?'已提前結束，可按「下載 PLY」保存目前結果；畫質可能尚未完成，且不含碰撞模型。':'可按「下載 PLY」保存視覺模型；結果不含碰撞模型，不能作為防穿牆場景。';
           setStatus(earlyFinish?'已提前結束':'視覺模型已完成','此結果尚未建立碰撞模型或尺度校正。');
-          if(live){liveSaving=true;savePersonalScene().then(saved=>{liveSaving=false;if(!saved){liveMode=false;onLiveFailure(note.textContent);return}refresh()})}else refresh();
+          if(live){liveSaving=true;savePersonalScene().then(saved=>{liveSaving=false;if(runEpoch!==liveEpoch){refresh();return}if(!saved){liveMode=false;onLiveFailure(note.textContent);return}refresh()})}else refresh();
         }
       });
-      await current.load(files);stillRunning();phase='solving';await current.solve({signal:abort.signal});stillRunning();phase='seeding';await current.seed();stillRunning();
+      await current.load(files);stillRunning();phase='solving';await current.solve({signal:abort.signal});stillRunning();if(live)onLiveCameras(current.recon?.cams||[],runEpoch);phase='seeding';await current.seed();stillRunning();
       observer=observeTrainingQueue(current.trainer,{onChange:()=>{if(session===current){updateDiagnostics();updateHealth()}}});if(el('gpuDiagnostics'))el('gpuDiagnostics').hidden=false;updateDiagnostics();current.view.attach(canvas);current.view.lookThrough(0);canvas.hidden=false;if(el('personalPreviewCaption'))el('personalPreviewCaption').hidden=false;if(el('previewViews')){el('previewViews').hidden=false;updatePreviewControls()}phase='training';pause.hidden=false;pause.textContent='暫停';finish.hidden=false;cancel.hidden=false;cancel.textContent='放棄本次重建';setStatus('本機重建進行中','請保持頁面開啟；完成後可下載 PLY。');beginMonitor();current.start();
     }catch(e){if(phase==='error')return;if(cancelRequested||e.name==='AbortError'){clearSession();phase='idle';panel.hidden=true;setStatus('已取消本機重建','照片仍保存在這個瀏覽器。');refresh()}else{liveMode=false;const where=stage.textContent;fail(`「${where}」階段未完成。請確認畫面重疊、可用記憶體及 Safari 版本。`,e)}}
   }
@@ -105,5 +105,5 @@ export function setupLocalReconstruction(getPhotos, {loadEngine=()=>import('../v
   window.addEventListener('beforeunload',event=>{if(['loading','solving','seeding','training','paused','finishing'].includes(phase)){event.preventDefault();event.returnValue=''}});
   window.addEventListener('pagehide',()=>{if(['loading','solving','seeding','training','paused','finishing'].includes(phase))wasInterrupted=true;abort?.abort();clearSession()});
   window.addEventListener('pageshow',()=>{if(wasInterrupted){wasInterrupted=false;fail('頁面離開或進入背景時重建中斷，請保持 Safari 開啟並重新開始。')}});
-  check();return {refresh,setInputBusy(value){inputBusy=value;refresh()},setLiveMode(value){liveMode=Boolean(value);if(liveMode){lastLiveCount=0;liveStartIndex=getPhotos().length}refresh()},get isSupported(){return supported}};
+  const ready=check();return {ready,refresh,setInputBusy(value){inputBusy=value;refresh()},setLiveMode(value){liveMode=Boolean(value);if(liveMode){liveEpoch++;lastLiveCount=0;liveStartIndex=getPhotos().length}refresh();return liveEpoch},stopLiveRun(){liveMode=false;if(currentRunLive&&['loading','solving','seeding','training','paused','finishing'].includes(phase)){cancelRequested=true;abort?.abort();clearSession();phase='idle';panel.hidden=true;refresh()}},get isSupported(){return supported}};
 }
