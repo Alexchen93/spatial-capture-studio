@@ -48,6 +48,16 @@ export class ScanCoverage{
   get hasDirections(){return this.solved.length>0||this.estimated.length>0}
   get hasSolved(){return this.solved.length>0}
   get missingCount(){return this.hasDirections?Array.from({length:AZIMUTH_CELLS*ELEVATION_CELLS},(_,index)=>this.solvedCells[index]||this.estimatedCells[index]).filter(value=>!value).length:null}
+  get guidance(){
+    let overlappingWalls=0,floorDirections=0,ceilingDirections=0;
+    for(let azimuth=0;azimuth<AZIMUTH_CELLS;azimuth++){
+      if(Math.max(this.cell(azimuth,2).solved,this.cell(azimuth,3).solved)>=2)overlappingWalls++;
+      if(this.cell(azimuth,1).solved)floorDirections++;
+      if(this.cell(azimuth,4).solved)ceilingDirections++;
+    }
+    return{localized:this.solved.length,overlappingWalls,floorDirections,ceilingDirections,
+      readyToReview:this.solved.length>=16&&overlappingWalls>=12&&floorDirections>=4&&ceilingDirections>=4};
+  }
 }
 
 export function drawCoverage(canvas,coverage,{yaw=0,pitch=.2}={}){

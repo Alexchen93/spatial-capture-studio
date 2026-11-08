@@ -29,4 +29,17 @@ test('invalid poses cannot claim spatial coverage',()=>{
   coverage.setSolvedCameras([{R:[1,2]}]);
   assert.equal(coverage.hasSolved,false);
   assert.equal(coverage.missingCount,null);
+  assert.equal(coverage.guidance.readyToReview,false);
+});
+
+test('review suggestion requires overlapping wall views plus floor and ceiling directions',()=>{
+  const pose=(imgIdx,yaw,pitch)=>camera(imgIdx,[Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),Math.cos(yaw)*Math.cos(pitch)]);
+  const coverage=new ScanCoverage();
+  const walls=Array.from({length:16},(_,index)=>[pose(index*2,index*Math.PI/8,0),pose(index*2+1,index*Math.PI/8,0)]).flat();
+  coverage.setSolvedCameras(walls);
+  assert.ok(coverage.guidance.overlappingWalls>=12);
+  assert.equal(coverage.guidance.readyToReview,false);
+  const floorAndCeiling=Array.from({length:4},(_,index)=>[pose(32+index*2,index*Math.PI/2,-Math.PI/4),pose(33+index*2,index*Math.PI/2,Math.PI/4)]).flat();
+  coverage.setSolvedCameras([...walls,...floorAndCeiling]);
+  assert.equal(coverage.guidance.readyToReview,true);
 });

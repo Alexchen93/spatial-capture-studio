@@ -61,20 +61,21 @@ test('live reconstruction uses only newly captured frames and refreshes after ei
   const elements=Object.fromEntries(ids.map(id=>[id,element()]));
   const oldDocument=globalThis.document,oldWindow=globalThis.window,oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
   globalThis.document={getElementById:id=>elements[id]};globalThis.window={addEventListener(){}};Object.defineProperty(globalThis,'navigator',{value:{gpu:{requestAdapter:async()=>({})}},configurable:true});
-  const sessions=[],saved=[],solved=[],photo=()=>({blob:new Blob(['image']),type:'image/jpeg'}),photos=Array.from({length:4},photo);
+  const sessions=[],saved=[],solved=[],steps=[],resets=[],photo=()=>({blob:new Blob(['image']),type:'image/jpeg'}),photos=Array.from({length:4},photo);
   class Session{
     constructor(config){this.config=config;this.handlers={};this.recon={cams:[{R:[1,0,0,0,-1,0,0,0,-1],t:[0,0,0],imgIdx:0}]};this.trainer={camMeta:[{}]};this.view={attach(){},lookThrough(){}};sessions.push(this)}
     on(name,fn){this.handlers[name]=fn}async load(files){this.files=files}async solve(){}async seed(){}start(){this.started=true}pause(){}dispose(){}async exportPlyBlob(){return new Blob(['ply'])}
   }
   const flush=async()=>{for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve))};
   try{
-    const control=setupLocalReconstruction(()=>photos,{loadEngine:async()=>({createSession:config=>new Session(config)}),onSavePersonalScene:async value=>{saved.push(value);return{id:'live-scene'}},onLiveCameras:cameras=>solved.push(cameras)});
+    const control=setupLocalReconstruction(()=>photos,{loadEngine:async()=>({createSession:config=>new Session(config)}),onSavePersonalScene:async value=>{saved.push(value);return{id:'live-scene'}},onLiveCameras:cameras=>solved.push(cameras),onLiveProgress:(...value)=>steps.push(value),onLiveBeforeReset:()=>resets.push(sessions.length)});
     await flush();control.setLiveMode(true);assert.equal(sessions.length,0);
     photos.push(...Array.from({length:8},photo));control.refresh();await flush();
-    assert.equal(sessions.length,1);assert.equal(sessions[0].files.length,8);assert.equal(sessions[0].config.maxIters,300);assert.equal(solved.length,1);assert.equal(solved[0][0].imgIdx,0);
+    assert.equal(sessions.length,1);assert.equal(sessions[0].files.length,8);assert.equal(sessions[0].config.maxIters,300);assert.equal(solved.length,1);assert.equal(solved[0][0].imgIdx,0);assert.deepEqual(resets,[0]);
+    sessions[0].handlers.metrics({iter:50});assert.ok(steps.some(([step,done,total])=>step==='train'&&done===50&&total===300));
     photos.push(...Array.from({length:8},photo));control.refresh();assert.equal(sessions.length,1);
     sessions[0].handlers.event({kind:'train-complete',iter:300});await flush();
-    assert.equal(saved.length,1);assert.equal(saved[0].live,true);assert.equal(sessions.length,2);assert.equal(sessions[1].files.length,16);
+    assert.equal(saved.length,1);assert.equal(saved[0].live,true);assert.equal(sessions.length,2);assert.equal(sessions[1].files.length,16);assert.deepEqual(resets,[0,1]);
     control.setLiveMode(false);sessions[1].handlers.event({kind:'train-complete',iter:300});await flush();
     assert.equal(saved.length,2);assert.equal(sessions.length,2);
   }finally{globalThis.document=oldDocument;globalThis.window=oldWindow;if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else delete globalThis.navigator}

@@ -10,8 +10,10 @@ let db=null,photos=[],stream=null,urls=[],toastTimer,busy=false,videoAbort=null,
 function toast(message){const el=$('#toast');el.textContent=message;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),4000)}
 const scanUi=setupScanUi(video,$('#trainingPreview'));
 const reconstruction=setupLocalReconstruction(()=>photos,{
-  onLiveFailure:message=>{stopLive();scanUi.note('重建中斷；已拍攝畫面仍保留');$('#liveTrainingSlot').hidden=false;$('#liveStatus').textContent=`重建已停止：${message}。已拍攝畫面仍保留，請到「本機重建」查看錯誤。`},
+  onLiveFailure:message=>{stopLive();scanUi.note('重建中斷；已拍攝畫面仍保留');scanUi.failure('3D 建立失敗 · 請進入編輯模式查看錯誤');$('#liveTrainingSlot').hidden=false;$('#liveStatus').textContent=`重建已停止：${message}。已拍攝畫面仍保留，請到「本機重建」查看錯誤。`},
   onLiveCameras:(cameras,epoch)=>{if(epoch===liveScanId)scanUi.solved(cameras)},
+  onLiveProgress:(step,done,total,epoch)=>{if(epoch===liveScanId)scanUi.progress(step,done,total)},
+  onLiveBeforeReset:()=>scanUi.holdPreview(),
   onSavePersonalScene:async({ply,cameras,live,liveEpoch})=>{
     if(!db)db=await openStore();
     const activeLive=live&&liveEpoch===liveScanId,now=Date.now(),id=activeLive?(liveProjectId||crypto.randomUUID()):crypto.randomUUID();
@@ -68,17 +70,18 @@ async function openCamera(){
   catch{toast('無法開啟相機，請檢查瀏覽器權限或選擇照片。');return false}
 }
 const trainingPanel=$('#trainingPanel'),trainingHome=trainingPanel.parentElement,liveSlot=$('#liveTrainingSlot'),liveStatus=$('#liveStatus');
-function stopLive(){
+function stopLive({limit=false}={}){
   if(!liveTimer)return;
   clearInterval(liveTimer);liveTimer=null;reconstruction.setLiveMode(false);$('#stopLive').hidden=true;
   trainingHome.append(trainingPanel);liveSlot.hidden=false;
-  liveStatus.textContent=liveProjectId?'已停止拍攝。可從拍攝起點進入第一人稱；若重建仍在進行，請至「本機重建」查看結果。':liveFrames<8?'已停止拍攝；本次不足 8 張可用畫面，尚未建立粗模。':'已停止拍攝；若重建仍在進行，請至「本機重建」查看結果。';
-  scanUi.note(liveProjectId?'拍攝已停止；可進入第一人稱':'拍攝已停止');
+  liveStatus.textContent=limit?'已達 60 張拍攝上限；請檢查目前模型，未完成的運算仍會繼續。':liveProjectId?'已停止拍攝。可從拍攝起點進入第一人稱；若重建仍在進行，請至「本機重建」查看結果。':liveFrames<8?'已停止拍攝；本次不足 8 張可用畫面，尚未建立粗模。':'已停止拍攝；若重建仍在進行，請至「本機重建」查看結果。';
+  scanUi.note(limit?'已達 60 張上限；請檢查模型':liveProjectId?'拍攝已停止；可進入第一人稱':'拍攝已停止');
+  if(limit)scanUi.limitReached();
   draw();
 }
 async function captureLiveFrame(){
   if(!liveTimer||liveBusy||busy||!video.videoWidth)return;
-  if(liveFrames>=60||photos.length>=100){liveStatus.textContent='已達 60 張連續拍攝上限。請停止拍攝並查看目前結果。';stopLive();return}
+  if(liveFrames>=60||photos.length>=100){stopLive({limit:true});return}
   liveBusy=true;
   try{
     const sample=document.createElement('canvas');sample.width=48;sample.height=36;
@@ -110,6 +113,7 @@ $('#liveCaptureBtn').onclick=beginScan;$('#beginScan').onclick=beginScan;
 $('#beginScan').disabled=false;$('#beginScan').innerHTML='<span aria-hidden="true">◎</span> 開始掃描';
 $('#scanExit').onclick=()=>{stopCamera();scanUi.stop()};
 $('#scanEdit').onclick=()=>{stopCamera();scanUi.stop({edit:true})};
+$('#scanFinish').onclick=()=>{stopCamera();scanUi.finished()};
 $('#scanEnter').onclick=()=>{stopCamera();reconstruction.stopLiveRun()};
 $('#stopLive').onclick=stopLive;
 function stopCamera(){stopLive();stream?.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;panel.hidden=true}$('#closeCamera').onclick=stopCamera;$('#snap').onclick=()=>{if(!video.videoWidth){toast('相機準備中，請稍候。');return}let c=document.createElement('canvas');c.width=video.videoWidth;c.height=video.videoHeight;c.getContext('2d').drawImage(video,0,0);c.toBlob(blob=>{if(blob)addFiles([new File([blob],'capture.jpg',{type:'image/jpeg'})]);else toast('拍攝失敗，請重試。')},'image/jpeg',.9)};window.addEventListener('pagehide',()=>{videoAbort?.abort();stopCamera()});
